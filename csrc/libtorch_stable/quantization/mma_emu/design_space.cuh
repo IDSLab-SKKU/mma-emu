@@ -23,6 +23,9 @@ namespace vllm {
 namespace mma_emu {
 namespace design_space {
 
+// Output element type, as selected by the dispatch.
+enum class MmaEmuOutDtype { kBFloat16, kFloat16 };
+
 // Accumulation algorithm, as passed to the torch operators.
 enum Algorithm : int64_t {
   kGDFS = 1,   // Group-Dot-Fused-Sum
