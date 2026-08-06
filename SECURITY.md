@@ -1,59 +1,40 @@
 # Security Policy
 
-## Reporting security issues
+## Scope
 
-Please report security issues privately using [the vulnerability submission form](https://github.com/vllm-project/vllm/security/advisories/new).
+This repository is a research fork of
+[vLLM](https://github.com/vllm-project/vllm) that emulates MMA accumulation
+arithmetic. It is intended for studying the numerical behaviour of quantized
+inference, **not for production serving**.
 
-## Issue triage
+The emulation kernels run on CUDA cores and are far slower than the tensor-core
+paths they replace. They are off by default: the kernels decline every layer
+unless `VLLM_MMA_EMU_ALGORITHM` is set. The fork inherits whatever security
+posture upstream vLLM had at the commit it branched from, and does not track
+subsequent fixes.
 
-Reports will then be triaged by the [vulnerability management team](https://docs.vllm.ai/en/latest/contributing/vulnerability_management.html).
+## Reporting
 
-## Threat model
+**Issues in this fork's own code** — the kernels under
+`csrc/libtorch_stable/quantization/mma_emu/`, the `mma_emu.py` kernel modules,
+or the upstream files this fork modifies (listed in [NOTICE](NOTICE)) — should
+be reported privately through
+[GitHub's private vulnerability reporting](https://github.com/IDSLab-SKKU/vllm-mma-emu/security/advisories/new)
+for this repository.
 
-Please see the [Security Guide in the vLLM documentation](https://docs.vllm.ai/en/latest/usage/security.html) for more information on vLLM's security assumptions and recommendations.
+**Issues in vLLM itself** should go to
+[vLLM's vulnerability submission form](https://github.com/vllm-project/vllm/security/advisories/new),
+not here. This fork does not maintain vLLM and cannot ship fixes for it. If a
+report turns out to affect upstream rather than this fork, we will say so and
+ask you to refile there.
 
-Please see [PyTorch's Security Policy](https://github.com/pytorch/pytorch/blob/main/SECURITY.md) for more information and recommendations on how to securely interact with models.
+This is a small research project. Expect a slower response than an actively
+maintained distribution would give, and do not depend on it where that matters.
 
-## Issue severity
+## Related policies
 
-We will determine the risk of each issue, taking into account our experience dealing with past issues, versions affected, common defaults, and use cases. We use the following severity categories:
-
-### CRITICAL Severity
-
-Vulnerabilities that allow remote attackers to execute arbitrary code, take full control of the system, or significantly compromise confidentiality, integrity, or availability without any interaction or privileges needed, examples include remote code execution via network, deserialization issues that allow exploit chains. Generally those issues which are rated as CVSS  ≥ 9.0.
-
-### HIGH Severity
-
-Serious security flaws that allow elevated impact—like RCE in specific, limited contexts or significant data loss—but require advanced conditions or some trust, examples include RCE in advanced deployment modes (e.g. multi-node), or high impact issues where some sort of privileged network access is required. These issues typically have CVSS scores between 7.0 and 8.9
-
-### MODERATE Severity
-
-Vulnerabilities that cause denial of service or partial disruption, but do not allow arbitrary code execution or data breach and have limited impact. These issues have a CVSS rating between 4.0 and 6.9
-
-### LOW Severity
-
-Minor issues such as informational disclosures, logging errors, non-exploitable flaws, or weaknesses that require local or high-privilege access and offer negligible impact. Examples include side channel attacks or hash collisions. These issues often have CVSS scores less than 4.0
-
-## Fix disclosure policy
-
-When a security report is accepted, the fix process depends on the severity:
-
-* **CRITICAL and HIGH severity**: Fixes are developed in a private security fork and coordinated with the prenotification group before public disclosure.
-* **MODERATE and LOW severity**: Fixes are developed and submitted as public pull requests. These issues do not require embargo since they do not enable arbitrary code execution or significant data breach, and public visibility accelerates community review and adoption of the fix.
-
-The vulnerability management team reserves the right to adjust the disclosure approach on a case-by-case basis, taking into account factors such as active exploitation, unusual attack surface, or coordination requirements with downstream vendors.
-
-## Prenotification policy
-
-For certain security issues of CRITICAL, HIGH, or MODERATE severity level, we may prenotify certain organizations or vendors that ship vLLM. The purpose of this prenotification is to allow for a coordinated release of fixes for severe issues.
-
-* This prenotification will be in the form of a private email notification. It may also include adding security contacts to the GitHub security advisory, typically a few days before release.
-
-* If you wish to be added to the prenotification group, please send an email copying all the members of the [vulnerability management team](https://docs.vllm.ai/en/latest/contributing/vulnerability_management.html). Each vendor contact will be analyzed on a case-by-case basis.
-
-* Organizations and vendors who either ship or use vLLM, are eligible to join the prenotification group if they meet at least one of the following qualifications
-    * Substantial internal deployment leveraging the upstream vLLM project.
-    * Established internal security teams and comprehensive compliance measures.
-    * Active and consistent contributions to the upstream vLLM project.
-
-* We may withdraw organizations from receiving future prenotifications if they release fixes or any other information about issues before they are public. Group membership may also change based on policy refinements for who may be included.
+- [vLLM Security Guide](https://docs.vllm.ai/en/latest/usage/security.html) —
+  the deployment assumptions this fork inherits.
+- [PyTorch's Security Policy](https://github.com/pytorch/pytorch/blob/main/SECURITY.md)
+  — on interacting with models safely. Treat untrusted checkpoints with the
+  same care you would untrusted code.
