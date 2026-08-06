@@ -9,9 +9,9 @@ inference, **not for production serving**.
 
 The emulation kernels run on CUDA cores and are far slower than the tensor-core
 paths they replace. They are off by default: the kernels decline every layer
-unless `VLLM_MMA_EMU_ALGORITHM` is set. The fork inherits whatever security
-posture upstream vLLM had at the commit it branched from, and does not track
-subsequent fixes.
+unless an accumulation algorithm is configured. The fork inherits whatever
+security posture upstream vLLM had at the commit it branched from, and does
+not track subsequent fixes.
 
 ## Reporting
 

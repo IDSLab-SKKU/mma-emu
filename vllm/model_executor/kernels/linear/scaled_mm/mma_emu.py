@@ -6,14 +6,13 @@
 Computes the same product as the CUTLASS path, but on CUDA cores with the
 accumulation arithmetic under software control, so the algorithm and its
 bitwidths become parameters. Selected with `--linear-backend mma_emu` and
-configured through the VLLM_MMA_EMU_* environment variables.
+configured through `--kernel-config`.
 """
 
 from collections.abc import Sequence
 
 import torch
 
-import vllm.envs as envs
 from vllm import _custom_ops as ops
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     QuantKey,
@@ -21,7 +20,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
 )
 from vllm.platforms import current_platform
 
-from ..mma_emu_config import config_error, resolve_algorithm
+from ..mma_emu_config import config_error, emulation_config, resolve_algorithm
 from .ScaledMMLinearKernel import (
     FP8ScaledMMLinearKernel,
     FP8ScaledMMLinearLayerConfig,
@@ -34,11 +33,12 @@ class MmaEmuFP8ScaledMMLinearKernel(FP8ScaledMMLinearKernel):
     ) -> None:
         super().__init__(c, layer_param_names)
         # Read once: apply_scaled_mm runs per layer per forward pass.
-        self.algorithm = resolve_algorithm()
-        self.f_bits = envs.VLLM_MMA_EMU_F
-        self.g_bits = envs.VLLM_MMA_EMU_G
-        self.group_size = envs.VLLM_MMA_EMU_GS
-        self.chunk_size = envs.VLLM_MMA_EMU_CS
+        emu = emulation_config()
+        self.algorithm = resolve_algorithm(emu)
+        self.f_bits = emu.f_bits
+        self.g_bits = emu.g_bits
+        self.group_size = emu.group_size
+        self.chunk_size = emu.chunk_size
 
     @classmethod
     def is_supported(

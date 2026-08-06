@@ -18,12 +18,12 @@ Design Space Drives Cross-Architecture LLM Inference Gaps"*.
 ## What it does
 
 ```bash
-VLLM_MMA_EMU_ALGORITHM=cofda VLLM_MMA_EMU_F=13 VLLM_MMA_EMU_CS=16 \
-  vllm serve nvidia/Llama-3.1-8B-Instruct-FP8 --linear-backend mma_emu
+vllm serve nvidia/Llama-3.1-8B-Instruct-FP8 --linear-backend mma_emu \
+  --kernel-config '{"mma_emu": {"algorithm": "cofda", "f_bits": 13, "chunk_size": 16}}'
 ```
 
 That runs an FP8 model whose linear layers accumulate the way an Ada tensor
-core does, on whatever GPU you happen to own. Change `VLLM_MMA_EMU_F` and the
+core does, on whatever GPU you happen to own. Change `f_bits` and the
 arithmetic changes with it.
 
 The emulation is bit-accurate. Configured to match the GPU it runs on, it
@@ -77,17 +77,33 @@ configuration and an explanation otherwise.
 
 ## Configuration
 
-| Variable | Values | |
+The accumulation lives under `mma_emu` in `--kernel-config`:
+
+| Field | Values | |
 | --- | --- | --- |
-| `VLLM_MMA_EMU_ALGORITHM` | `gdfs`, `cofda` | Unset means the emulation kernels decline every layer, so the native path runs |
-| `VLLM_MMA_EMU_F` | 7 – 35 | |
-| `VLLM_MMA_EMU_G` | 3 – 32 / 3 – 6 | GDFS only |
-| `VLLM_MMA_EMU_CS` | 16, 32 | FP8 CoFDA only |
-| `VLLM_MMA_EMU_GS` | 8, 16 | FP8 GDFS only |
+| `algorithm` | `gdfs`, `cofda` | Unset means the emulation kernels decline every layer, so the native path runs |
+| `f_bits` | 7 – 35 | |
+| `g_bits` | 3 – 32 / 3 – 6 | GDFS only |
+| `chunk_size` | 16, 32 | FP8 CoFDA only |
+| `group_size` | 8, 16 | FP8 GDFS only |
 
 Selection is separate from configuration on purpose. `--linear-backend mma_emu`
 is what you ask for once, while the bitwidths describe the architecture being
 emulated and change from run to run over a fixed model.
+
+Because it is configuration rather than environment, a sweep is a plain loop in
+one process, and each setting reaches the compilation cache key — two runs that
+compute different numbers do not share compiled artifacts:
+
+```python
+for f in (7, 13, 21, 25, 35):
+    llm = LLM(model=MODEL, kernel_config={
+        "linear_backend": "mma_emu",
+        "mma_emu": {"algorithm": "cofda", "f_bits": f, "chunk_size": 32},
+    })
+    ...
+    del llm
+```
 
 ## Building
 
@@ -113,9 +129,13 @@ with a different CUDA build.
 
 ### Environment caveats
 
-These are properties of the machine this fork was developed on rather than of
-the fork itself, but they are the difference between a working install and a
-confusing one.
+These are properties of the machine this fork was developed on — an SM120 GPU
+on a driver capped at CUDA 12.8 — rather than of the fork itself, but they are
+the difference between a working install and a confusing one.
+
+**On CUDA 13 these no longer apply, and one of them is actively harmful.** See
+[CUDA13_MIGRATION.md](CUDA13_MIGRATION.md) before installing on a newer
+toolchain.
 
 **CUDA 12.x with a pre-580 driver.** torch 2.13.0 has no cu128 build, and its
 cu130 and cu132 builds need driver ≥ 580. On an older driver, cu129 is the only
@@ -156,7 +176,7 @@ mean the recorded configuration is wrong rather than that the emulation is.
 
 This is a research fork, not a competing distribution. It tracks upstream at
 commit `43c4bdcae` and changes as little of it as possible: the emulation lives
-in new files under `csrc/libtorch_stable/quantization/mma_emu/`, and seven
+in new files under `csrc/libtorch_stable/quantization/mma_emu/`, and six
 upstream files are touched, to register the kernels and their configuration.
 
 Issues and pull requests about vLLM itself belong at

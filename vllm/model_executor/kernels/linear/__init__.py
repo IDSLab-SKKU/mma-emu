@@ -350,7 +350,7 @@ _POSSIBLE_INT8_KERNELS: dict[PlatformEnum, list[type[Int8ScaledMMLinearKernel]]]
 # in priority/performance order (when available)
 _POSSIBLE_FP8_KERNELS: dict[PlatformEnum, list[type[FP8ScaledMMLinearKernel]]] = {
     PlatformEnum.CUDA: [
-        # Declines every layer unless VLLM_MMA_EMU_ALGORITHM is set, so it
+        # Declines every layer unless an accumulation algorithm is configured, so
         # only takes precedence when emulation was asked for.
         MmaEmuFP8ScaledMMLinearKernel,
         MarlinFP8ScaledMMLinearKernel,
@@ -476,7 +476,7 @@ _POSSIBLE_MXFP8_KERNELS: dict[PlatformEnum, list[type[Mxfp8LinearKernel]]] = {
 
 _POSSIBLE_NVFP4_KERNELS: dict[PlatformEnum, list[type[NvFp4LinearKernel]]] = {
     PlatformEnum.CUDA: [
-        # Declines every layer unless VLLM_MMA_EMU_ALGORITHM is set.
+        # Declines every layer unless an accumulation algorithm is configured.
         MmaEmuNvFp4LinearKernel,
         FlashInferCuteDslNvFp4LinearKernel,
         # FlashInferB12xNvFp4LinearKernel excluded from auto-selection until

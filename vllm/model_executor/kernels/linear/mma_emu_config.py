@@ -3,24 +3,32 @@
 
 """Shared configuration for the MMA accumulation emulation kernels.
 
-The FP8 and NVFP4 kernels read the same VLLM_MMA_EMU_* environment variables
-and answer the same question in ``can_implement``, so both go through here.
+The FP8 and NVFP4 kernels read the same accumulation settings and answer the
+same question in ``can_implement``, so both go through here.
 """
 
 import torch
 
-import vllm.envs as envs
+from vllm.config.mma_emu import MmaEmuConfig
 
-# Values of VLLM_MMA_EMU_ALGORITHM, matching design_space::Algorithm.
+# Algorithm names, as they map onto design_space::Algorithm.
 ALGORITHMS = {"gdfs": 1, "cofda": 2}
 
 
-def resolve_algorithm() -> int | None:
-    """The configured algorithm id, or None if unset or unrecognised."""
-    name = envs.VLLM_MMA_EMU_ALGORITHM
-    if name is None:
+def emulation_config() -> MmaEmuConfig:
+    """The accumulation configuration for the engine being constructed."""
+    from vllm.config import get_current_vllm_config_or_none
+
+    config = get_current_vllm_config_or_none()
+    return config.kernel_config.mma_emu if config is not None else MmaEmuConfig()
+
+
+def resolve_algorithm(config: MmaEmuConfig | None = None) -> int | None:
+    """The configured algorithm id, or None if unset."""
+    config = config if config is not None else emulation_config()
+    if config.algorithm is None:
         return None
-    return ALGORITHMS.get(name.strip().lower())
+    return ALGORITHMS[config.algorithm]
 
 
 def config_error(is_fp4: bool) -> str | None:
@@ -30,27 +38,21 @@ def config_error(is_fp4: bool) -> str | None:
     kernels, so they are stated once in design_space.cuh rather than restated
     here.
     """
-    name = envs.VLLM_MMA_EMU_ALGORITHM
-    if name is None:
-        return (
-            "MMA emulation is off; set VLLM_MMA_EMU_ALGORITHM to "
-            f"{' or '.join(sorted(ALGORITHMS))}."
-        )
+    config = emulation_config()
 
-    algorithm = resolve_algorithm()
-    if algorithm is None:
+    if config.algorithm is None:
         return (
-            f"VLLM_MMA_EMU_ALGORITHM must be {' or '.join(sorted(ALGORITHMS))}, "
-            f"got {name!r}."
+            "MMA emulation is off; set the algorithm, for example "
+            '--kernel-config \'{"mma_emu": {"algorithm": "cofda"}}\'.'
         )
 
     return (
         torch.ops._C.mma_emu_config_error(
-            algorithm,
-            envs.VLLM_MMA_EMU_F,
-            envs.VLLM_MMA_EMU_G,
-            envs.VLLM_MMA_EMU_GS,
-            envs.VLLM_MMA_EMU_CS,
+            ALGORITHMS[config.algorithm],
+            config.f_bits,
+            config.g_bits,
+            config.group_size,
+            config.chunk_size,
             is_fp4,
         )
         or None

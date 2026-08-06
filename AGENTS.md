@@ -29,7 +29,9 @@ enough to repeat:
   environment.
 - **Set `TRITON_PTXAS_BLACKWELL_PATH`** on SM100+ with a CUDA 12.x driver, and
   clear `~/.triton/cache` when you do. Without it every Triton kernel fails with
-  `device kernel image is invalid`, which looks like a vLLM bug and is not.
+  `device kernel image is invalid`, which looks like a vLLM bug and is not. On
+  CUDA 13 do **not** set it — see [CUDA13_MIGRATION.md](CUDA13_MIGRATION.md),
+  which lists every workaround that exists only because of CUDA 12.
 
 ## 2. Divergence
 
@@ -39,16 +41,15 @@ Guard that.
 **Prefer new files over edits to existing ones.** The emulation lives in
 `csrc/libtorch_stable/quantization/mma_emu/` and in `mma_emu.py` modules under
 `vllm/model_executor/kernels/linear/`. A new file carries no rebase risk. Only
-registration touchpoints are real divergence, and there are currently seven:
+registration touchpoints are real divergence, and there are currently six:
 
 | File | Why |
 | --- | --- |
 | `CMakeLists.txt` | Adds the sources; also gates cooperative topk on CUDA ≥ 13 |
 | `csrc/libtorch_stable/torch_bindings.cpp` | Operator schemas and implementations |
 | `csrc/libtorch_stable/ops.h` | Operator declarations |
-| `vllm/envs.py` | `VLLM_MMA_EMU_*` |
+| `vllm/config/kernel.py` | `mma_emu` sub-config, and `mma_emu` in the `LinearBackend` literal |
 | `vllm/_custom_ops.py` | Python wrappers |
-| `vllm/config/kernel.py` | `mma_emu` in the `LinearBackend` literal |
 | `vllm/model_executor/kernels/linear/__init__.py` | Kernel registration |
 
 The cooperative topk change in `CMakeLists.txt` is an **upstream bug**, not a

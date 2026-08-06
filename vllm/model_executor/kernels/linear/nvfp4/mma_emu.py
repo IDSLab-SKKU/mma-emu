@@ -5,14 +5,13 @@
 
 Computes the same product as the CUTLASS path, but on CUDA cores with the
 accumulation arithmetic under software control. Selected with
-`--linear-backend mma_emu` and configured through the VLLM_MMA_EMU_*
-environment variables. The chunk and group sizes are fixed at 16 by the
-kernel, so only the algorithm, F and G apply here.
+`--linear-backend mma_emu` and configured through `--kernel-config`. The
+chunk and group sizes are fixed at 16 by the kernel, so only the algorithm,
+F and G apply here.
 """
 
 import torch
 
-import vllm.envs as envs
 from vllm._custom_ops import mma_emu_scaled_nvfp4_mm, scaled_fp4_quant
 from vllm.model_executor.layers.quantization.utils.nvfp4_utils import (
     pad_nvfp4_weight_for_cutlass,
@@ -21,7 +20,7 @@ from vllm.model_executor.layers.quantization.utils.nvfp4_utils import (
 )
 from vllm.platforms import current_platform
 
-from ..mma_emu_config import config_error, resolve_algorithm
+from ..mma_emu_config import config_error, emulation_config, resolve_algorithm
 from .base import NvFp4LinearKernel, NvFp4LinearLayerConfig
 
 
@@ -31,9 +30,10 @@ class MmaEmuNvFp4LinearKernel(NvFp4LinearKernel):
     def __init__(self, config: NvFp4LinearLayerConfig) -> None:
         super().__init__(config)
         # Read once: apply_weights runs per layer per forward pass.
-        self.algorithm = resolve_algorithm()
-        self.f_bits = envs.VLLM_MMA_EMU_F
-        self.g_bits = envs.VLLM_MMA_EMU_G
+        emu = emulation_config()
+        self.algorithm = resolve_algorithm(emu)
+        self.f_bits = emu.f_bits
+        self.g_bits = emu.g_bits
 
     @classmethod
     def is_supported(
