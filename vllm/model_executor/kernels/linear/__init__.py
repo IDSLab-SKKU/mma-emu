@@ -172,6 +172,9 @@ from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassFP8ScaledMMLinearKernel,
     CutlassInt8ScaledMMLinearKernel,
 )
+from vllm.model_executor.kernels.linear.scaled_mm.mma_emu import (
+    MmaEmuFP8ScaledMMLinearKernel,
+)
 from vllm.model_executor.kernels.linear.scaled_mm.deep_gemm import (
     DeepGemmFp8BlockScaledMMKernel,
 )
@@ -298,6 +301,9 @@ _LINEAR_BACKEND_KERNEL_MAP: dict[str, set[type]] = {
     "conch": {
         ConchLinearKernel,
     },
+    "mma_emu": {
+        MmaEmuFP8ScaledMMLinearKernel,
+    },
     "exllama": {
         ExllamaLinearKernel,
     },
@@ -340,6 +346,9 @@ _POSSIBLE_INT8_KERNELS: dict[PlatformEnum, list[type[Int8ScaledMMLinearKernel]]]
 # in priority/performance order (when available)
 _POSSIBLE_FP8_KERNELS: dict[PlatformEnum, list[type[FP8ScaledMMLinearKernel]]] = {
     PlatformEnum.CUDA: [
+        # Declines every layer unless VLLM_MMA_EMU_ALGORITHM is set, so it
+        # only takes precedence when emulation was asked for.
+        MmaEmuFP8ScaledMMLinearKernel,
         MarlinFP8ScaledMMLinearKernel,
         FlashInferFP8ScaledMMLinearKernel,
         CutlassFP8ScaledMMLinearKernel,
@@ -1155,6 +1164,7 @@ __all__ = [
     "AiterInt8ScaledMMLinearKernel",
     "CPUInt8ScaledMMLinearKernel",
     "CutlassFP8ScaledMMLinearKernel",
+    "MmaEmuFP8ScaledMMLinearKernel",
     "CutlassInt8ScaledMMLinearKernel",
     "FlashInferFP8ScaledMMLinearKernel",
     "ChannelWiseTorchFP8ScaledMMLinearKernel",

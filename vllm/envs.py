@@ -120,6 +120,11 @@ if TYPE_CHECKING:
     VLLM_ALLOW_RUNTIME_LORA_UPDATING: bool = False
     VLLM_SKIP_P2P_CHECK: bool = False
     VLLM_DISABLED_KERNELS: list[str] = []
+    VLLM_MMA_EMU_ALGORITHM: str | None = None
+    VLLM_MMA_EMU_F: int = 13
+    VLLM_MMA_EMU_G: int = 6
+    VLLM_MMA_EMU_CS: int = 32
+    VLLM_MMA_EMU_GS: int = 16
     VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE: bool = True
     VLLM_DISABLE_PYNCCL: bool = False
     VLLM_USE_OINK_OPS: bool = False
@@ -1164,6 +1169,18 @@ environment_variables: dict[str, Callable[[], Any]] = {
         if "VLLM_DISABLED_KERNELS" not in os.environ
         else os.environ["VLLM_DISABLED_KERNELS"].split(",")
     ),
+    # MMA accumulation emulation. The algorithm selects which arithmetic the
+    # mma_emu kernels emulate and unset means the kernels decline the layer, so
+    # --linear-backend mma_emu with no algorithm set is an error rather than a
+    # silent fall back to the native path. The remaining knobs are the
+    # accumulation bitwidths: F fractional bits, G intra-group bits for GDFS,
+    # CS chunk size for CoFDA and GS group size for GDFS. Accepted values come
+    # from the kernels themselves, via torch.ops._C.mma_emu_config_error.
+    "VLLM_MMA_EMU_ALGORITHM": lambda: os.getenv("VLLM_MMA_EMU_ALGORITHM", None),
+    "VLLM_MMA_EMU_F": lambda: int(os.getenv("VLLM_MMA_EMU_F", "13")),
+    "VLLM_MMA_EMU_G": lambda: int(os.getenv("VLLM_MMA_EMU_G", "6")),
+    "VLLM_MMA_EMU_CS": lambda: int(os.getenv("VLLM_MMA_EMU_CS", "32")),
+    "VLLM_MMA_EMU_GS": lambda: int(os.getenv("VLLM_MMA_EMU_GS", "16")),
     "VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE": lambda: bool(
         int(os.getenv("VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE", "1"))
     ),

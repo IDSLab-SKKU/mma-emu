@@ -156,6 +156,7 @@ LinearBackend = Literal[
     "machete",
     "fbgemm",
     "conch",
+    "mma_emu",
     "exllama",
     "emulation",
     "xpu",
