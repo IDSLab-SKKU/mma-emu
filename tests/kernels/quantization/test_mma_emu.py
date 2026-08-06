@@ -28,9 +28,7 @@ if not current_platform.is_cuda():
     pytest.skip("MMA-Emu kernels require CUDA", allow_module_level=True)
 
 if not hasattr(torch.ops._C, "mma_emu_scaled_fp8_mm"):
-    pytest.skip(
-        "vLLM was not built with the MMA-Emu kernels", allow_module_level=True
-    )
+    pytest.skip("vLLM was not built with the MMA-Emu kernels", allow_module_level=True)
 
 GDFS, COFDA = 1, 2
 
@@ -43,8 +41,9 @@ class Config(dict):
 
     def __repr__(self) -> str:
         algo = "gdfs" if self["algorithm"] == GDFS else "cofda"
-        rest = " ".join(f"{k[0].upper()}={v}" for k, v in self.items()
-                        if k != "algorithm")
+        rest = " ".join(
+            f"{k[0].upper()}={v}" for k, v in self.items() if k != "algorithm"
+        )
         return f"{algo} {rest}"
 
 
@@ -53,24 +52,28 @@ class Config(dict):
 ARCH_ACCUMULATION: dict[int, dict[str, Config]] = {
     # Ada
     89: {
-        "fp8": Config(algorithm=COFDA, f_bits=13, g_bits=6, group_size=16,
-                      chunk_size=16),
+        "fp8": Config(
+            algorithm=COFDA, f_bits=13, g_bits=6, group_size=16, chunk_size=16
+        ),
     },
     # Hopper
     90: {
-        "fp8": Config(algorithm=COFDA, f_bits=13, g_bits=6, group_size=16,
-                      chunk_size=32),
+        "fp8": Config(
+            algorithm=COFDA, f_bits=13, g_bits=6, group_size=16, chunk_size=32
+        ),
     },
     # Blackwell, data center
     100: {
-        "fp8": Config(algorithm=COFDA, f_bits=25, g_bits=6, group_size=16,
-                      chunk_size=32),
+        "fp8": Config(
+            algorithm=COFDA, f_bits=25, g_bits=6, group_size=16, chunk_size=32
+        ),
         "nvfp4": Config(algorithm=GDFS, f_bits=35, g_bits=6),
     },
     # Blackwell, workstation
     120: {
-        "fp8": Config(algorithm=COFDA, f_bits=25, g_bits=6, group_size=16,
-                      chunk_size=32),
+        "fp8": Config(
+            algorithm=COFDA, f_bits=25, g_bits=6, group_size=16, chunk_size=32
+        ),
         "nvfp4": Config(algorithm=GDFS, f_bits=35, g_bits=6),
     },
 }
@@ -111,13 +114,13 @@ OUT_DTYPES = [torch.bfloat16, torch.float16]
 
 def fp8_inputs(m: int, n: int, k: int, seed: int):
     g = torch.Generator(device="cuda").manual_seed(seed)
-    a = (torch.randn(m, k, generator=g, device="cuda") * 0.3).to(
-        torch.float8_e4m3fn
-    )
+    a = (torch.randn(m, k, generator=g, device="cuda") * 0.3).to(torch.float8_e4m3fn)
     # B is [K, N] and column-major.
-    b = (torch.randn(n, k, generator=g, device="cuda") * 0.3).to(
-        torch.float8_e4m3fn
-    ).t()
+    b = (
+        (torch.randn(n, k, generator=g, device="cuda") * 0.3)
+        .to(torch.float8_e4m3fn)
+        .t()
+    )
     scale_a = torch.full((1,), 0.05, device="cuda", dtype=torch.float32)
     scale_b = torch.full((1,), 0.07, device="cuda", dtype=torch.float32)
     return a, b, scale_a, scale_b
@@ -142,9 +145,7 @@ def test_fp8_matches_native(m: int, n: int, k: int, out_dtype, use_bias: bool):
     """FP8 emulation at this architecture's accumulation must match CUTLASS."""
     config = arch_config("fp8")
     a, b, scale_a, scale_b = fp8_inputs(m, n, k, seed=m * 31 + k)
-    bias = (
-        torch.randn(n, device="cuda", dtype=out_dtype) if use_bias else None
-    )
+    bias = torch.randn(n, device="cuda", dtype=out_dtype) if use_bias else None
 
     native = ops.cutlass_scaled_mm(a, b, scale_a, scale_b, out_dtype, bias)
     emulated = ops.mma_emu_scaled_fp8_mm(
@@ -174,9 +175,7 @@ def test_nvfp4_matches_native(m: int, n: int, k: int, out_dtype):
     alpha = (1.0 / (a_gs * b_gs)).to(torch.float32).reshape(1)
 
     native = ops.cutlass_scaled_fp4_mm(a, b, a_sf, b_sf, alpha, out_dtype)
-    emulated = ops.mma_emu_scaled_nvfp4_mm(
-        a, b, a_sf, b_sf, alpha, out_dtype, **config
-    )
+    emulated = ops.mma_emu_scaled_nvfp4_mm(a, b, a_sf, b_sf, alpha, out_dtype, **config)
 
     assert emulated.shape == native.shape
     assert emulated.dtype == native.dtype
@@ -186,22 +185,38 @@ def test_nvfp4_matches_native(m: int, n: int, k: int, out_dtype):
 @pytest.mark.parametrize(
     "config,expected",
     [
-        (Config(algorithm=COFDA, f_bits=13, g_bits=6, group_size=16,
-                chunk_size=32), None),
-        (Config(algorithm=GDFS, f_bits=35, g_bits=32, group_size=8,
-                chunk_size=32), None),
-        (Config(algorithm=3, f_bits=13, g_bits=6, group_size=16,
-                chunk_size=32), "algorithm must be"),
-        (Config(algorithm=COFDA, f_bits=6, g_bits=6, group_size=16,
-                chunk_size=32), "f_bits must be in"),
-        (Config(algorithm=COFDA, f_bits=36, g_bits=6, group_size=16,
-                chunk_size=32), "f_bits must be in"),
-        (Config(algorithm=GDFS, f_bits=13, g_bits=33, group_size=16,
-                chunk_size=32), "g_bits must be in"),
-        (Config(algorithm=COFDA, f_bits=13, g_bits=6, group_size=16,
-                chunk_size=8), "chunk_size must be"),
-        (Config(algorithm=GDFS, f_bits=13, g_bits=6, group_size=4,
-                chunk_size=32), "group_size must be"),
+        (
+            Config(algorithm=COFDA, f_bits=13, g_bits=6, group_size=16, chunk_size=32),
+            None,
+        ),
+        (
+            Config(algorithm=GDFS, f_bits=35, g_bits=32, group_size=8, chunk_size=32),
+            None,
+        ),
+        (
+            Config(algorithm=3, f_bits=13, g_bits=6, group_size=16, chunk_size=32),
+            "algorithm must be",
+        ),
+        (
+            Config(algorithm=COFDA, f_bits=6, g_bits=6, group_size=16, chunk_size=32),
+            "f_bits must be in",
+        ),
+        (
+            Config(algorithm=COFDA, f_bits=36, g_bits=6, group_size=16, chunk_size=32),
+            "f_bits must be in",
+        ),
+        (
+            Config(algorithm=GDFS, f_bits=13, g_bits=33, group_size=16, chunk_size=32),
+            "g_bits must be in",
+        ),
+        (
+            Config(algorithm=COFDA, f_bits=13, g_bits=6, group_size=16, chunk_size=8),
+            "chunk_size must be",
+        ),
+        (
+            Config(algorithm=GDFS, f_bits=13, g_bits=6, group_size=4, chunk_size=32),
+            "group_size must be",
+        ),
     ],
 )
 def test_fp8_config_validation(config: Config, expected: str | None):

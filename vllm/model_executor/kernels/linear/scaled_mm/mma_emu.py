@@ -27,6 +27,7 @@ from .ScaledMMLinearKernel import (
     FP8ScaledMMLinearLayerConfig,
 )
 
+
 class MmaEmuFP8ScaledMMLinearKernel(FP8ScaledMMLinearKernel):
     def __init__(
         self, c: FP8ScaledMMLinearLayerConfig, layer_param_names: Sequence[str]
