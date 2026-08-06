@@ -1,7 +1,7 @@
-# Agent Instructions for vllm-mma-emu
+# Agent Instructions for mma-emu
 
 > These instructions apply to **all** AI-assisted contributions to
-> `IDSLab-SKKU/vllm-mma-emu`.
+> `IDSLab-SKKU/mma-emu`.
 
 This is a research fork of [vLLM](https://github.com/vllm-project/vllm) that
 emulates MMA accumulation arithmetic on CUDA cores. Read [README.md](README.md)

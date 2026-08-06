@@ -19,7 +19,7 @@ not track subsequent fixes.
 `csrc/libtorch_stable/quantization/mma_emu/`, the `mma_emu.py` kernel modules,
 or the upstream files this fork modifies (listed in [NOTICE](NOTICE)) — should
 be reported privately through
-[GitHub's private vulnerability reporting](https://github.com/IDSLab-SKKU/vllm-mma-emu/security/advisories/new)
+[GitHub's private vulnerability reporting](https://github.com/IDSLab-SKKU/mma-emu/security/advisories/new)
 for this repository.
 
 **Issues in vLLM itself** should go to

@@ -1,4 +1,4 @@
-# Contributing to vllm-mma-emu
+# Contributing to mma-emu
 
 This is a research fork of [vLLM](https://github.com/vllm-project/vllm). Start
 with [README.md](README.md) for what it does and how to build it, and

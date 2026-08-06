@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD001 MD041 -->
 
-# vllm-mma-emu
+# mma-emu
 
 A fork of [vLLM](https://github.com/vllm-project/vllm) that can run a model
 end to end under an **arbitrary MMA accumulation configuration**.
