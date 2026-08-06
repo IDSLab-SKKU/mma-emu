@@ -27,14 +27,27 @@ alongside the `K` products.
 
 ## Supported configurations
 
-| Format | Algorithms | Notes |
-| --- | --- | --- |
-| FP8 E4M3 | GDFS, CoFDA | Per-tensor scales |
-| NVFP4 E2M1 | GDFS, CoFDA | UE4M3 block scales, block size 16, alpha epilogue. `CS` and `GS` are fixed at 16 |
+| Layer | Format | Algorithms | Notes |
+| --- | --- | --- | --- |
+| Dense linear | FP8 E4M3 | GDFS, CoFDA | Per-tensor scales |
+| Dense linear | NVFP4 E2M1 | GDFS, CoFDA | UE4M3 block scales, block size 16, alpha epilogue. `CS` and `GS` are fixed at 16 |
+| Grouped MoE | FP8 E4M3 | CoFDA | Per-tensor activation scale, one weight scale per expert |
 
-Dense linear layers only. The native tensor-core paths are provided by
-`cutlass_scaled_mm` (FP8) and `cutlass_scaled_fp4_mm` (NVFP4), which also serve
-as the correctness reference for these kernels.
+Each has a native tensor-core counterpart, which is also the correctness
+reference: `cutlass_scaled_mm`, `cutlass_scaled_fp4_mm` and `cutlass_moe_mm`.
+The emulation configured to match the GPU it runs on should reproduce that
+result bit for bit.
+
+### The MoE kernel is provisional
+
+It builds for SM90 alone. `cutlass_moe_mm` has SM90 and SM100 implementations
+and no SM120 one, so on a consumer Blackwell card there is no native path to
+check it against, and a kernel that cannot be checked should not ship enabled.
+
+Its arithmetic is the dense CoFDA path with an expert dimension added, and it
+compiles, but **no bit-exactness run against `cutlass_moe_mm` has been done**.
+GDFS is not implemented here; the operator rejects any other algorithm rather
+than quietly computing something else.
 
 ## Files
 
@@ -46,19 +59,48 @@ rather than in the path.
 | --- | --- | --- |
 | **Core** — format-agnostic accumulation arithmetic | `types.cuh` · `fp32_utils.cuh` · `accumulator.cuh` · `gdfs_group.cuh` · `design_space.cuh` · `tiling.cuh` | — |
 | **Formats** — per-format element and scale arithmetic | `fp8_e4m3.cuh` · `fp4_e2m1.cuh` · `nvfp4_ue4m3.cuh` · `scale_swizzle.cuh` | Core |
-| **GEMM** — kernels | `mma_emu_scaled_fp8_mm_kernels.cuh` · `mma_emu_scaled_nvfp4_mm_kernels.cuh` | Core, Formats |
-| **Entry** — torch operators | `mma_emu_scaled_fp8_mm_entry.cu` · `mma_emu_scaled_nvfp4_mm_entry.cu` | GEMM |
+| **GEMM** — kernels | `mma_emu_scaled_fp8_mm_kernels.cuh` · `mma_emu_scaled_nvfp4_mm_kernels.cuh` · `mma_emu_moe_grouped_mm_kernels.cuh` | Core, Formats |
+| **Entry** — torch operators | `mma_emu_scaled_fp8_mm_entry.cu` · `mma_emu_scaled_nvfp4_mm_entry.cu` · `mma_emu_moe_grouped_mm_entry.cu` | GEMM |
+
+`mma_emu_config_check.h` sits beside these rather than in a layer. It is
+host-only, and both the operator entry points and the Python kernel selector go
+through it, so which configurations are accepted — and the wording that reports
+a rejection — is stated once.
+
+The MoE GEMM header includes the FP8 one: its per-tile arithmetic *is* the dense
+CoFDA kernel, with an expert dimension and per-expert base pointers added.
 
 Nothing in Core or Formats depends on torch; the torch boundary is confined to
-the GEMM and Entry files.
+the Entry files. The GEMM headers take raw pointers, dimensions and a stream.
 
 `design_space.cuh` is the single source of truth for which `F`, `G`, `CS` and
 `GS` values the kernels accept. Every dispatch table and every validation check
 derives from it; nothing restates those values.
 
+## Runtime versus compile-time parameters
+
+`F` and `G` only feed shift amounts and truncation masks, so they are kernel
+arguments and their whole accepted range is available without rebuilding. `CS`
+and `GS` size a register array, so they must be known at compile time and are
+enumerated instead.
+
+That split is why the dense kernels need twelve instantiations rather than
+hundreds. When adding a parameter, decide first which kind it is.
+
 ## Torch operators
 
 | Operator | Arch | Built when |
 | --- | --- | --- |
-| `mma_emu_scaled_fp8_mm` | SM89+ (Ada, Hopper, Blackwell) | `ENABLE_MMAEMU_FP8` |
-| `mma_emu_scaled_nvfp4_mm` | SM100+ (Blackwell), CUDA 12.8+ | `ENABLE_MMAEMU_NVFP4` |
+| `mma_emu_scaled_fp8_mm` | SM89+ | `VLLM_ENABLE_MMA_EMU_FP8` |
+| `mma_emu_scaled_nvfp4_mm` | SM100+, CUDA 12.8+ | `VLLM_ENABLE_MMA_EMU_NVFP4` |
+| `mma_emu_moe_mm` | SM90 only | `VLLM_ENABLE_MMA_EMU_MOE` |
+| `mma_emu_config_error` | any | `VLLM_ENABLE_MMA_EMU_FP8` |
+
+The architecture gates are in `CMakeLists.txt`, next to the sources they select.
+These are CUDA-core kernels, so they need no CUTLASS and no
+architecture-specific MMA instruction; only the element type constrains them,
+apart from the MoE kernel, which is limited to where it can be verified.
+
+`mma_emu_config_error` takes no tensor, so it registers under
+`CompositeExplicitAutograd` rather than `CUDA`. It returns an empty string for
+an accepted configuration and an explanation otherwise.
