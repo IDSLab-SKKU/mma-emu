@@ -129,6 +129,22 @@ std::string mma_emu_config_error(int64_t algorithm, int64_t f_bits,
                                  int64_t chunk_size, bool is_fp4);
 #endif
 
+#ifdef VLLM_ENABLE_MMA_EMU_MOE
+// Hopper only; see the MMA_EMU_MOE_ARCHS gate in CMakeLists.txt.
+void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
+                    torch::stable::Tensor const& a_tensors,
+                    torch::stable::Tensor const& b_tensors,
+                    torch::stable::Tensor const& a_scales,
+                    torch::stable::Tensor const& b_scales,
+                    torch::stable::Tensor const& expert_offsets,
+                    torch::stable::Tensor const& problem_sizes,
+                    torch::stable::Tensor const& a_strides,
+                    torch::stable::Tensor const& b_strides,
+                    torch::stable::Tensor const& c_strides, bool per_act_token,
+                    bool per_out_ch, int64_t algorithm, int64_t f_bits,
+                    int64_t chunk_size);
+#endif
+
 #ifdef VLLM_ENABLE_MMA_EMU_NVFP4
 void mma_emu_scaled_nvfp4_mm(torch::stable::Tensor& out,
                              torch::stable::Tensor const& a,

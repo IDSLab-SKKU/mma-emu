@@ -51,13 +51,22 @@ alongside the products.
 
 ## Supported
 
-| Format | Algorithms | Scales | Notes |
-| --- | --- | --- | --- |
-| FP8 E4M3 | GDFS, CoFDA | per-tensor | `CS` ∈ {16, 32}, `GS` ∈ {8, 16} |
-| NVFP4 E2M1 | GDFS, CoFDA | UE4M3 block, size 16 | `CS` and `GS` fixed at 16 |
+| Layer | Format | Algorithms | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| Dense linear | FP8 E4M3 | GDFS, CoFDA | per-tensor | `CS` ∈ {16, 32}, `GS` ∈ {8, 16} |
+| Dense linear | NVFP4 E2M1 | GDFS, CoFDA | UE4M3 block, size 16 | `CS` and `GS` fixed at 16 |
+| Grouped MoE | FP8 E4M3 | CoFDA | per-tensor, per-expert | **Hopper only, and not yet verified** |
 
-Dense linear layers only; MoE is not covered. Everything else in vLLM behaves
-as upstream does.
+Everything else in vLLM behaves as upstream does.
+
+**The MoE kernel is provisional.** It builds for SM90 alone, because the check
+that makes the dense kernels trustworthy is not available elsewhere:
+`cutlass_moe_mm` has SM90 and SM100 implementations and no SM120 one, so on a
+consumer Blackwell card there is nothing to compare against. The kernel
+compiles and its arithmetic is the dense CoFDA path with an expert dimension
+added, but **no bit-exactness run has been done**. Treat it as unverified until
+one has. There is no Python integration for it yet either — the operator exists,
+nothing selects it.
 
 ### Parameter ranges
 

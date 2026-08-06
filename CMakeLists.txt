@@ -847,6 +847,26 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
                    "found in CUDA target architectures")
   endif()
 
+  # The grouped MoE emulation is Hopper only. It is the one MMA-Emu kernel whose
+  # result cannot be checked here against a native path: cutlass_moe_mm has
+  # SM90 and SM100 implementations and no SM120 one, so there is nothing to
+  # compare against on a consumer Blackwell card. Restricting the build to the
+  # architecture where the comparison is possible keeps an unverifiable kernel
+  # from shipping enabled.
+  cuda_archs_loose_intersection(MMA_EMU_MOE_ARCHS "9.0" "${CUDA_ARCHS}")
+  if(MMA_EMU_MOE_ARCHS)
+    set(MMA_EMU_MOE_SRCS
+      "csrc/libtorch_stable/quantization/mma_emu/mma_emu_moe_grouped_mm_entry.cu")
+    set_gencode_flags_for_srcs(
+      SRCS "${MMA_EMU_MOE_SRCS}"
+      CUDA_ARCHS "${MMA_EMU_MOE_ARCHS}")
+    list(APPEND VLLM_STABLE_EXT_SRC "${MMA_EMU_MOE_SRCS}")
+    message(STATUS "Building mma_emu_moe_mm for archs: ${MMA_EMU_MOE_ARCHS}")
+  else()
+    message(STATUS "Not building mma_emu_moe_mm: Hopper (9.0) only, and it is "
+                   "not in CUDA target architectures")
+  endif()
+
   cuda_archs_loose_intersection(MMA_EMU_NVFP4_ARCHS "10.0;12.0" "${CUDA_ARCHS}")
   if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND MMA_EMU_NVFP4_ARCHS)
     set(MMA_EMU_NVFP4_SRCS
@@ -1211,6 +1231,10 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     if(MMA_EMU_NVFP4_ARCHS)
       target_compile_definitions(_C_stable_libtorch PRIVATE
         VLLM_ENABLE_MMA_EMU_NVFP4=1)
+    endif()
+    if(MMA_EMU_MOE_ARCHS)
+      target_compile_definitions(_C_stable_libtorch PRIVATE
+        VLLM_ENABLE_MMA_EMU_MOE=1)
     endif()
     # Needed by CUTLASS kernels
     target_compile_definitions(_C_stable_libtorch PRIVATE

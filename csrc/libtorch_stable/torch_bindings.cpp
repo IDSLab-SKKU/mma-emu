@@ -208,6 +208,19 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "                     bool is_fp4) -> str");
 #endif
 
+#ifdef VLLM_ENABLE_MMA_EMU_MOE
+  // MMA-Emu grouped FP8 MoE GEMM. Same interface as cutlass_moe_mm plus the
+  // accumulation configuration. Per-tensor scales and CoFDA only, and built
+  // for Hopper only, where cutlass_moe_mm exists to check it against.
+  ops.def(
+      "mma_emu_moe_mm(Tensor! out_tensors, Tensor a_tensors, Tensor b_tensors, "
+      "               Tensor a_scales, Tensor b_scales, Tensor expert_offsets, "
+      "               Tensor problem_sizes, Tensor a_strides, "
+      "               Tensor b_strides, Tensor c_strides, bool per_act_token, "
+      "               bool per_out_ch, int algorithm, int f_bits, "
+      "               int chunk_size) -> ()");
+#endif
+
 #ifdef VLLM_ENABLE_MMA_EMU_NVFP4
   // MMA-Emu NVFP4 block scaled GEMM. Same interface as cutlass_scaled_fp4_mm
   // plus the accumulation configuration. CS and GS are fixed at 16.
@@ -736,6 +749,9 @@ STABLE_TORCH_LIBRARY_IMPL(_C, CUDA, ops) {
   ops.impl("cutlass_scaled_mm_azp", TORCH_BOX(&cutlass_scaled_mm_azp));
 #ifdef VLLM_ENABLE_MMA_EMU_FP8
   ops.impl("mma_emu_scaled_fp8_mm", TORCH_BOX(&mma_emu_scaled_fp8_mm));
+#endif
+#ifdef VLLM_ENABLE_MMA_EMU_MOE
+  ops.impl("mma_emu_moe_mm", TORCH_BOX(&mma_emu_moe_mm));
 #endif
 #ifdef VLLM_ENABLE_MMA_EMU_NVFP4
   ops.impl("mma_emu_scaled_nvfp4_mm", TORCH_BOX(&mma_emu_scaled_nvfp4_mm));
