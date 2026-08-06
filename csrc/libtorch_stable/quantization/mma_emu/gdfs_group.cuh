@@ -42,14 +42,14 @@ struct GroupResult {
  *          truncating shifted-out bits (RZ), then sum.
  *
  * G controls the precision: larger G preserves more bits during alignment.
- * G >= 6 is lossless for E2M1 products (max_exp_diff=4, radix=2).
+ * G >= 6 is lossless for E2M1 products (max_exp_diff=4, radix=2). It is baked
+ * into the products by the multiply step, so this function does not take it.
  *
- * @tparam G GDFS intra-group bits G
  * @tparam N Products per group (GS)
- * @param products Array of N products from fp4_multiply_unnormalized<G>
+ * @param products Array of N products from fp4_multiply_unnormalized
  * @return GroupResult with (mantissa_sum, max_exp, all_zero)
  */
-template<int G, int N>
+template<int N>
 [[nodiscard]] __device__ __forceinline__
 GroupResult group_accumulate(const Product* products) {
     GroupResult gr;

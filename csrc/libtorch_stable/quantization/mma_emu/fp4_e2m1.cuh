@@ -191,9 +191,8 @@ decode_fp4_operand(uint8_t nibble) {
 // Multiply two pre-decoded E2M1 operands into an unnormalized Product carrying
 // G fractional bits. The operands are already decoded, so no subnormal branch
 // is needed here.
-template <int G>
 [[nodiscard]] __device__ __forceinline__ Product
-fp4_multiply_predecoded(DecodedFP4Operand a, DecodedFP4Operand b) {
+fp4_multiply_predecoded(DecodedFP4Operand a, DecodedFP4Operand b, int g) {
     Product result;
     result.is_nan = false;
     result.is_inf = false;
@@ -213,11 +212,11 @@ fp4_multiply_predecoded(DecodedFP4Operand a, DecodedFP4Operand b) {
 
     const uint64_t raw_product =
         static_cast<uint64_t>(a.sig) * static_cast<uint64_t>(b.sig);
-    constexpr int SCALE_SHIFT = G - fp4::PRODUCT_RADIX_BIT;
-    if constexpr (SCALE_SHIFT >= 0) {
-        result.significand = raw_product << SCALE_SHIFT;
+    const int scale_shift = g - fp4::PRODUCT_RADIX_BIT;
+    if (scale_shift >= 0) {
+        result.significand = raw_product << scale_shift;
     } else {
-        result.significand = raw_product >> (-SCALE_SHIFT);
+        result.significand = raw_product >> (-scale_shift);
     }
     result.exponent = a.exp + b.exp;
 
@@ -318,13 +317,14 @@ Product fp4_multiply_unnormalized(FP4Components a, FP4Components b) {
 // ============================================================================
 // Register-streamed GDFS group accumulate (no Product[GS] array)
 // ============================================================================
-// Scale-agnostic: returns the same GroupResult as group_accumulate<G,GS>, so
-// the caller applies UE4M3 (NVFP4) scales afterward. Two passes stream products
+// Scale-agnostic: returns the same GroupResult as group_accumulate<GS>, so the
+// caller applies UE4M3 (NVFP4) scales afterward. Two passes stream products
 // through registers (recomputed in Pass 2 from the pre-decoded operands).
-// Bit-exact to fp4_multiply_unnormalized<G> + group_accumulate<G,GS>.
-template <int G, int GS>
+// Bit-exact to fp4_multiply_unnormalized + group_accumulate<GS>.
+template <int GS>
 [[nodiscard]] __device__ __forceinline__ GroupResult
-fp4_gdfs_group_accumulate_predecoded(DecodedFP4Frag a_frag, DecodedFP4Frag b_frag) {
+fp4_gdfs_group_accumulate_predecoded(DecodedFP4Frag a_frag,
+                                     DecodedFP4Frag b_frag, int g) {
     GroupResult gr;
     gr.mantissa_sum = 0;
     gr.max_exp = -9999;
@@ -333,7 +333,7 @@ fp4_gdfs_group_accumulate_predecoded(DecodedFP4Frag a_frag, DecodedFP4Frag b_fra
     // Pass 1: max exponent among non-zero products
     #pragma unroll
     for (int i = 0; i < GS; i++) {
-        Product p = fp4_multiply_predecoded<G>(a_frag[i], b_frag[i]);
+        Product p = fp4_multiply_predecoded(a_frag[i], b_frag[i], g);
         if (!p.is_zero) {
             gr.all_zero = false;
             if (p.exponent > gr.max_exp) {
@@ -350,7 +350,7 @@ fp4_gdfs_group_accumulate_predecoded(DecodedFP4Frag a_frag, DecodedFP4Frag b_fra
     // Pass 2: align to max_exp (RZ truncation) and accumulate
     #pragma unroll
     for (int i = 0; i < GS; i++) {
-        Product p = fp4_multiply_predecoded<G>(a_frag[i], b_frag[i]);
+        Product p = fp4_multiply_predecoded(a_frag[i], b_frag[i], g);
         if (p.is_zero) {
             continue;
         }

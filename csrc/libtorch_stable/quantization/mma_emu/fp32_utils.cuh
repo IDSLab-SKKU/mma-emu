@@ -99,13 +99,12 @@ bool fp32_is_nan(float val) {
  * This function extracts the sign, exponent, and significand from an FP32 value
  * and represents them in a format suitable for FDA/GDFS accumulation.
  *
- * @tparam F Number of fractional bits in the significand
  * @param val FP32 value to convert
+ * @param f Number of fractional bits in the significand
  * @return Operand representation
  */
-template<int F>
 [[nodiscard]] __device__ __forceinline__
-Operand fp32_to_operand(float val) {
+Operand fp32_to_operand(float val, int f) {
     Operand result;
     result.is_inf = false;
     result.is_nan = false;
@@ -157,14 +156,14 @@ Operand fp32_to_operand(float val) {
         result.exponent = biased_exp - fp32::EXPONENT_BIAS;
     }
 
-    // Convert to F-bit significand
+    // Convert to f-bit significand
     uint64_t fp32_sig = fp32::IMPLICIT_BIT | mantissa;
-    constexpr int SHIFT_AMOUNT = fp32::MANTISSA_BITS - F;
+    const int shift_amount = static_cast<int>(fp32::MANTISSA_BITS) - f;
 
-    if constexpr (SHIFT_AMOUNT >= 0) {
-        result.significand = static_cast<int64_t>(fp32_sig >> SHIFT_AMOUNT);
+    if (shift_amount >= 0) {
+        result.significand = static_cast<int64_t>(fp32_sig >> shift_amount);
     } else {
-        result.significand = static_cast<int64_t>(fp32_sig << (-SHIFT_AMOUNT));
+        result.significand = static_cast<int64_t>(fp32_sig << (-shift_amount));
     }
 
     return result;
@@ -180,14 +179,13 @@ Operand fp32_to_operand(float val) {
  * This is the final step of FDA/GDFS accumulation, normalizing the accumulated
  * fixed-point result back to FP32.
  *
- * @tparam F Number of fractional bits in the accumulator
  * @param mantissa_sum Signed fixed-point accumulator value
  * @param max_exp Maximum exponent used during accumulation
+ * @param f Number of fractional bits in the accumulator
  * @return Normalized FP32 result
  */
-template<int F>
 [[nodiscard]] __device__ __forceinline__
-float fixed_to_fp32(int64_t mantissa_sum, int max_exp) {
+float fixed_to_fp32(int64_t mantissa_sum, int max_exp, int f) {
     if (mantissa_sum == 0) {
         return 0.0f;
     }
@@ -203,7 +201,7 @@ float fixed_to_fp32(int64_t mantissa_sum, int max_exp) {
     int leading_one_pos = 63 - leading_zeros;
 
     // Compute final exponent
-    int final_exp = leading_one_pos + max_exp - F;
+    int final_exp = leading_one_pos + max_exp - f;
     int biased_exp = final_exp + fp32::EXPONENT_BIAS;
 
     // Handle underflow to subnormal or zero
@@ -240,16 +238,17 @@ float fixed_to_fp32(int64_t mantissa_sum, int max_exp) {
     }
     normalized_mantissa &= fp32::MANTISSA_MASK;
 
-    // Final truncation to F fractional bits (round-to-zero)
-    // For F < 23: truncate at F-th fractional bit
-    // For F >= 23: truncate at 23rd fractional bit (FP32 mantissa width)
-    constexpr int EFFECTIVE_TRUNC_POINT = (F < static_cast<int>(fp32::MANTISSA_BITS))
-                                           ? F
-                                           : static_cast<int>(fp32::MANTISSA_BITS);
-    constexpr int FINAL_TRUNC_BITS = fp32::MANTISSA_BITS - EFFECTIVE_TRUNC_POINT;
-    if constexpr (FINAL_TRUNC_BITS > 0) {
-        constexpr uint32_t FINAL_TRUNC_MASK = fp32::MANTISSA_MASK & (~((1u << FINAL_TRUNC_BITS) - 1));
-        normalized_mantissa &= FINAL_TRUNC_MASK;
+    // Final truncation to f fractional bits (round-to-zero)
+    // For f < 23: truncate at the f-th fractional bit
+    // For f >= 23: truncate at the 23rd fractional bit (FP32 mantissa width)
+    const int effective_trunc_point = (f < static_cast<int>(fp32::MANTISSA_BITS))
+                                       ? f
+                                       : static_cast<int>(fp32::MANTISSA_BITS);
+    const int final_trunc_bits = static_cast<int>(fp32::MANTISSA_BITS) - effective_trunc_point;
+    if (final_trunc_bits > 0) {
+        const uint32_t final_trunc_mask =
+            fp32::MANTISSA_MASK & (~((1u << final_trunc_bits) - 1));
+        normalized_mantissa &= final_trunc_mask;
     }
 
     // Assemble final result

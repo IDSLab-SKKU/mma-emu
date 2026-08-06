@@ -31,17 +31,17 @@ namespace mma_emu {
  * 2. Align all operands to the maximum exponent and accumulate
  * 3. Convert the fixed-point sum back to FP32
  *
- * @tparam F Number of fractional bits in the accumulator
  * @tparam N Number of operands to accumulate
  * @param operands Array of operands to accumulate
  * @param c Running accumulator value (FP32)
+ * @param f Number of fractional bits in the accumulator
  * @return New FP32 accumulator value
  */
-template<int F, int N>
+template<int N>
 [[nodiscard]] __device__ __forceinline__
-float chunked_accumulate(const Operand* operands, float c) {
+float chunked_accumulate(const Operand* operands, float c, int f) {
     // Convert running accumulator to operand format
-    Operand c_operand = fp32_to_operand<F>(c);
+    Operand c_operand = fp32_to_operand(c, f);
 
     // Early return if accumulator is already NaN
     if (c_operand.is_nan) {
@@ -127,7 +127,7 @@ float chunked_accumulate(const Operand* operands, float c) {
         mantissa_sum += operands[i].sign * aligned;
     }
 
-    return fixed_to_fp32<F>(mantissa_sum, max_exp);
+    return fixed_to_fp32(mantissa_sum, max_exp, f);
 }
 
 // ============================================================================
@@ -140,15 +140,15 @@ float chunked_accumulate(const Operand* operands, float c) {
  * This variant accepts Product structures (from FP8 multiplication) and
  * applies FDA-specific truncation rules.
  *
- * @tparam F Fractional bits F
  * @tparam CHUNK_SIZE Products per CoFDA chunk (CS)
  * @param products Array of FP8 products
  * @param c Running FP32 accumulator
+ * @param f Fractional bits F
  * @return New FP32 accumulator value
  */
-template<int F, int CHUNK_SIZE>
+template<int CHUNK_SIZE>
 [[nodiscard]] __device__ __forceinline__
-float fda_accumulate_chunk(const Product* products, float c = 0.0f) {
+float fda_accumulate_chunk(const Product* products, float c, int f) {
     // Convert products to operands
     Operand operands[CHUNK_SIZE];
 
@@ -162,7 +162,7 @@ float fda_accumulate_chunk(const Product* products, float c = 0.0f) {
         operands[i].is_inf = products[i].is_inf;
     }
 
-    return chunked_accumulate<F, CHUNK_SIZE>(operands, c);
+    return chunked_accumulate<CHUNK_SIZE>(operands, c, f);
 }
 
 // ============================================================================
@@ -175,16 +175,16 @@ float fda_accumulate_chunk(const Product* products, float c = 0.0f) {
  * This variant is designed for GDFS accumulation where groups have already
  * been scaled and converted to Operand format.
  *
- * @tparam F Inter-group fractional bits F
  * @tparam NUM_GROUPS Groups per K-tile (BK / GS)
  * @param groups Array of scaled group operands
  * @param c Running FP32 accumulator
+ * @param f Inter-group fractional bits F
  * @return New FP32 accumulator value
  */
-template<int F, int NUM_GROUPS>
+template<int NUM_GROUPS>
 [[nodiscard]] __device__ __forceinline__
-float gdfs_accumulate_tile(const Operand* groups, float c) {
-    return chunked_accumulate<F, NUM_GROUPS>(groups, c);
+float gdfs_accumulate_tile(const Operand* groups, float c, int f) {
+    return chunked_accumulate<NUM_GROUPS>(groups, c, f);
 }
 
 // ============================================================================

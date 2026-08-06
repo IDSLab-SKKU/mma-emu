@@ -135,9 +135,8 @@ struct DecodedFrag {
 // Multiply two pre-decoded E4M3 operands into an unnormalized Product carrying
 // F fractional bits. The operands are already decoded, so no subnormal branch
 // is needed here.
-template <int F>
 [[nodiscard]] __device__ __forceinline__ Product
-fp8_multiply_predecoded(DecodedOperand a, DecodedOperand b) {
+fp8_multiply_predecoded(DecodedOperand a, DecodedOperand b, int g) {
     Product result;
     result.is_nan = false;
     result.is_inf = false;
@@ -163,11 +162,11 @@ fp8_multiply_predecoded(DecodedOperand a, DecodedOperand b) {
 
     const uint64_t raw_product = static_cast<uint64_t>(a.significand) *
                                  static_cast<uint64_t>(b.significand);
-    constexpr int SCALE_SHIFT = F - fp8::PRODUCT_RADIX_BIT;
-    if constexpr (SCALE_SHIFT >= 0) {
-        result.significand = raw_product << SCALE_SHIFT;
+    const int scale_shift = g - fp8::PRODUCT_RADIX_BIT;
+    if (scale_shift >= 0) {
+        result.significand = raw_product << scale_shift;
     } else {
-        result.significand = raw_product >> (-SCALE_SHIFT);
+        result.significand = raw_product >> (-scale_shift);
     }
     result.exponent = a.exp + b.exp;
     return result;
@@ -183,9 +182,10 @@ fp8_multiply_predecoded(DecodedOperand a, DecodedOperand b) {
 // semantics are is_zero-only — exactly matching the shared group_accumulate, so
 // NaN/Inf products (significand 0, is_zero false) contribute as in the original.
 // Bit-exact to fp8_multiply_unnormalized<G> + group_accumulate<G,GS>.
-template <int G, int GS>
+template <int GS>
 [[nodiscard]] __device__ __forceinline__ GroupResult
-fp8_gdfs_group_accumulate_predecoded(DecodedFrag a_frag, DecodedFrag b_frag) {
+fp8_gdfs_group_accumulate_predecoded(DecodedFrag a_frag, DecodedFrag b_frag,
+                                     int g) {
     GroupResult gr;
     gr.mantissa_sum = 0;
     gr.max_exp = -9999;
@@ -194,7 +194,7 @@ fp8_gdfs_group_accumulate_predecoded(DecodedFrag a_frag, DecodedFrag b_frag) {
     // Pass 1: max exponent among non-zero products
     #pragma unroll
     for (int i = 0; i < GS; i++) {
-        Product p = fp8_multiply_predecoded<G>(a_frag[i], b_frag[i]);
+        Product p = fp8_multiply_predecoded(a_frag[i], b_frag[i], g);
         if (!p.is_zero) {
             gr.all_zero = false;
             if (p.exponent > gr.max_exp) {
@@ -211,7 +211,7 @@ fp8_gdfs_group_accumulate_predecoded(DecodedFrag a_frag, DecodedFrag b_frag) {
     // Pass 2: align to max_exp (RZ truncation) and accumulate
     #pragma unroll
     for (int i = 0; i < GS; i++) {
-        Product p = fp8_multiply_predecoded<G>(a_frag[i], b_frag[i]);
+        Product p = fp8_multiply_predecoded(a_frag[i], b_frag[i], g);
         if (p.is_zero) {
             continue;
         }
