@@ -1,7 +1,7 @@
 /*
  * MMA-Emu FP8 GEMM — CUDA-core emulation kernels
  *
- * Implements FP8 E4M3 GEMM with three accumulation algorithms:
+ * Implements FP8 E4M3 GEMM with two accumulation algorithms:
  *
  * 1. GDFS (Group-Dot-Fused-Sum): Two-level hierarchy with G-bits (group)
  *    then F-bits (fused-sum). No per-block scale factors — FP8 uses
@@ -10,17 +10,12 @@
  * 2. CoFDA (Chain-of-FDA): Single-level chunked accumulation with F-bits.
  *    FDA = CoFDA with chunk_size matching the K tile dimension.
  *
- * 3. CoFDA, C-decoupled: the accumulator C is excluded from
- *    the F-bit datapath. Products are summed at F bits, then merged with
- *    C in a second alignment stage at wider precision.
- *
  * Emulates the MMA accumulation arithmetic on CUDA cores, where every
  * alignment and truncation step is under software control. The native
- * result is produced by cutlass_scaled_mm.
+ * result is produced by cutlass_scaled_mm, which is also the correctness
+ * reference for these kernels.
  *
- * This kernel matches the cutlass_scaled_mm interface for drop-in replacement.
- *
- * Emulation parameters (accepted values: core/design_space.cuh):
+ * Emulation parameters (accepted values: design_space.cuh):
  * - f_bits: fractional bits F
  * - g_bits: GDFS intra-group bits G
  * - group_size: GDFS group size GS
