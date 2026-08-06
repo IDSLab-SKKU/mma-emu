@@ -1,0 +1,58 @@
+vllm-mma-emu
+Copyright 2026 IDSLab, Sungkyunkwan University
+
+This product includes software developed by the vLLM project
+(https://github.com/vllm-project/vllm), licensed under the Apache License,
+Version 2.0.
+
+    Copyright contributors to the vLLM project
+
+--------------------------------------------------------------------------------
+
+Modifications
+=============
+
+This is a modified fork of vLLM, branched from upstream commit 43c4bdcae. It
+adds kernels that emulate MMA accumulation arithmetic on CUDA cores, so that
+the accumulation algorithm and its bitwidths become run-time parameters.
+
+Added, under the Apache License, Version 2.0:
+
+    csrc/libtorch_stable/quantization/mma_emu/
+    tests/kernels/quantization/test_mma_emu.py
+    tools/build_mma_emu.sh
+    vllm/model_executor/kernels/linear/mma_emu_config.py
+    vllm/model_executor/kernels/linear/nvfp4/mma_emu.py
+    vllm/model_executor/kernels/linear/scaled_mm/mma_emu.py
+
+Modified from the upstream versions:
+
+    CMakeLists.txt
+    csrc/libtorch_stable/ops.h
+    csrc/libtorch_stable/torch_bindings.cpp
+    vllm/_custom_ops.py
+    vllm/config/kernel.py
+    vllm/envs.py
+    vllm/model_executor/kernels/linear/__init__.py
+
+Replaced, and no longer describing the upstream project:
+
+    AGENTS.md
+    README.md
+
+Removed, being specific to the upstream project's review and triage process:
+
+    .github/workflows/add_label_automerge.yml
+    .github/workflows/issue_autolabel.yml
+    .github/workflows/macos-smoke-test.yml
+    .github/workflows/new_pr_bot.yml
+    .github/workflows/notify-ci-authorized.yml
+    .github/workflows/record-ci-approval.yml
+    .github/workflows/run-ci-command.yml
+    .github/workflows/scripts/create_release.js
+    .github/workflows/scripts/run_ci_command.py
+    .github/workflows/scripts/test_run_ci_command.py
+    .github/workflows/stale.yml
+
+The upstream project is not responsible for this fork, and questions about vLLM
+itself should go to https://github.com/vllm-project/vllm.
