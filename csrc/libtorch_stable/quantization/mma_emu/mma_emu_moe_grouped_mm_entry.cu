@@ -47,8 +47,6 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
 
   STD_TORCH_CHECK(a_tensors.stride(1) == 1 && out_tensors.stride(1) == 1,
                   "MMA-Emu moe_mm: a and out must be row-major");
-  STD_TORCH_CHECK(b_tensors.stride(2) == 1,
-                  "MMA-Emu moe_mm: b must be [E, N, K] with contiguous K");
 
   // The emulation applies one scale per expert in its epilogue, so a per-token
   // or per-output-channel scale vector has nowhere to go.
@@ -69,9 +67,25 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
       "MMA-Emu moe_mm: problem_sizes must be int32");
 
   const int64_t num_experts = b_tensors.size(0);
-  const int64_t n = b_tensors.size(1);
-  const int64_t k = b_tensors.size(2);
   const int64_t total_rows = a_tensors.size(0);
+
+  // Each expert's weight occupies N * K elements with K contiguous. Callers
+  // present that either as [E, N, K] or as its [E, K, N] transpose — CUTLASS
+  // takes the shape from problem_sizes and ignores the tensor's own, so both
+  // reach cutlass_moe_mm. Read the layout off the strides rather than assuming
+  // one of them.
+  int64_t n, k;
+  if (b_tensors.stride(2) == 1) {
+    n = b_tensors.size(1);
+    k = b_tensors.size(2);
+  } else if (b_tensors.stride(1) == 1) {
+    k = b_tensors.size(1);
+    n = b_tensors.size(2);
+  } else {
+    STD_TORCH_CHECK(false,
+                    "MMA-Emu moe_mm: b must have a contiguous K dimension");
+    return;
+  }
 
   STD_TORCH_CHECK(a_tensors.size(1) == k,
                   "MMA-Emu moe_mm: a and b disagree on K");
