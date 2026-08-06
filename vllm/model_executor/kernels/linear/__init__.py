@@ -129,6 +129,9 @@ from vllm.model_executor.kernels.linear.nvfp4 import (
 from vllm.model_executor.kernels.linear.nvfp4.cutlass import (
     CutlassNvFp4LinearKernel,
 )
+from vllm.model_executor.kernels.linear.nvfp4.mma_emu import (
+    MmaEmuNvFp4LinearKernel,
+)
 from vllm.model_executor.kernels.linear.nvfp4.emulation import (
     EmulationNvFp4LinearKernel,
 )
@@ -303,6 +306,7 @@ _LINEAR_BACKEND_KERNEL_MAP: dict[str, set[type]] = {
     },
     "mma_emu": {
         MmaEmuFP8ScaledMMLinearKernel,
+        MmaEmuNvFp4LinearKernel,
     },
     "exllama": {
         ExllamaLinearKernel,
@@ -472,6 +476,8 @@ _POSSIBLE_MXFP8_KERNELS: dict[PlatformEnum, list[type[Mxfp8LinearKernel]]] = {
 
 _POSSIBLE_NVFP4_KERNELS: dict[PlatformEnum, list[type[NvFp4LinearKernel]]] = {
     PlatformEnum.CUDA: [
+        # Declines every layer unless VLLM_MMA_EMU_ALGORITHM is set.
+        MmaEmuNvFp4LinearKernel,
         FlashInferCuteDslNvFp4LinearKernel,
         # FlashInferB12xNvFp4LinearKernel excluded from auto-selection until
         # upstream CUTLASS SM121 MMA op guard is resolved; use
@@ -1165,6 +1171,7 @@ __all__ = [
     "CPUInt8ScaledMMLinearKernel",
     "CutlassFP8ScaledMMLinearKernel",
     "MmaEmuFP8ScaledMMLinearKernel",
+    "MmaEmuNvFp4LinearKernel",
     "CutlassInt8ScaledMMLinearKernel",
     "FlashInferFP8ScaledMMLinearKernel",
     "ChannelWiseTorchFP8ScaledMMLinearKernel",
