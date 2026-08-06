@@ -63,10 +63,9 @@ bool is_nan(uint8_t val) {
  * @param sfb UE4M3 scale factor for B
  * @return Operand with F fractional bits, ready for STP5-7 accumulation
  */
-template<int F, int G>
 [[nodiscard]] __device__ __forceinline__
 Operand apply_ue4m3_scales(int64_t mantissa_sum, int max_exp,
-                           uint8_t sfa, uint8_t sfb) {
+                           uint8_t sfa, uint8_t sfb, int f, int g) {
     Operand result;
 
     // UE4M3 truncation (Step 0): mask MSB to 0
@@ -153,11 +152,11 @@ Operand apply_ue4m3_scales(int64_t mantissa_sum, int max_exp,
     // Result radix = G + 6
     int64_t scaled_sum = mantissa_sum * sf_product;
 
-    // Convert to F-bit significand format
-    constexpr int COMBINED_RADIX = G + 6;
-    constexpr int SHIFT_TO_F = F - COMBINED_RADIX;
+    // Convert to f-bit significand format
+    const int COMBINED_RADIX = g + 6;
+    const int SHIFT_TO_F = f - COMBINED_RADIX;
 
-    if constexpr (SHIFT_TO_F >= 0) {
+    if (SHIFT_TO_F >= 0) {
         result.significand = scaled_sum << SHIFT_TO_F;
     } else {
         result.significand = scaled_sum >> (-SHIFT_TO_F);
@@ -192,10 +191,9 @@ Operand apply_ue4m3_scales(int64_t mantissa_sum, int max_exp,
  * @param sfb UE4M3 scale factor for B
  * @return Operand with F fractional bits, ready for chunked accumulation
  */
-template<int F>
 [[nodiscard]] __device__ __forceinline__
 Operand fp4_product_with_ue4m3_scales(FP4Components a, FP4Components b,
-                                       uint8_t sfa, uint8_t sfb) {
+                                       uint8_t sfa, uint8_t sfb, int f) {
     Operand result;
     result.is_inf = false;
 
@@ -286,9 +284,9 @@ Operand fp4_product_with_ue4m3_scales(FP4Components a, FP4Components b,
 
     // Scale to F-bit radix
     constexpr int COMBINED_RADIX = fp4::PRODUCT_RADIX_BIT + 2 * ue4m3::Q1_3_SHIFT;  // 2 + 6 = 8
-    constexpr int SCALE_SHIFT = F - COMBINED_RADIX;
+    const int SCALE_SHIFT = f - COMBINED_RADIX;
 
-    if constexpr (SCALE_SHIFT >= 0) {
+    if (SCALE_SHIFT >= 0) {
         result.significand = scaled_product << SCALE_SHIFT;
     } else {
         result.significand = scaled_product >> (-SCALE_SHIFT);

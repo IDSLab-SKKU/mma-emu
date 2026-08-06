@@ -249,9 +249,8 @@ fp4_multiply_predecoded(DecodedFP4Operand a, DecodedFP4Operand b, int g) {
  * @param b Second FP4 E2M1 operand (decomposed)
  * @return Product structure ready for group accumulation
  */
-template<int G>
 [[nodiscard]] __device__ __forceinline__
-Product fp4_multiply_unnormalized(FP4Components a, FP4Components b) {
+Product fp4_multiply_unnormalized(FP4Components a, FP4Components b, int g) {
     Product result;
     result.is_nan = false;   // E2M1 has no NaN
     result.is_inf = false;   // E2M1 has no infinity
@@ -296,9 +295,9 @@ Product fp4_multiply_unnormalized(FP4Components a, FP4Components b) {
     // SCALE_SHIFT = G - 2:
     //   G=-1 → >>3,  G=0 → >>2,  G=1 → >>1,  G=2 → nop,  G=6 → <<4
     uint64_t raw_product = static_cast<uint64_t>(sig_a) * static_cast<uint64_t>(sig_b);
-    constexpr int SCALE_SHIFT = G - fp4::PRODUCT_RADIX_BIT;
+    const int SCALE_SHIFT = g - fp4::PRODUCT_RADIX_BIT;
 
-    if constexpr (SCALE_SHIFT >= 0) {
+    if (SCALE_SHIFT >= 0) {
         result.significand = raw_product << SCALE_SHIFT;
     } else {
         result.significand = raw_product >> (-SCALE_SHIFT);

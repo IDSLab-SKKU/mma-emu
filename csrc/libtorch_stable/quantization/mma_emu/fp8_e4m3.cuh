@@ -293,9 +293,8 @@ FP8Components decompose_fp8_e4m3(uint8_t bits) {
  * @param b Second FP8 E4M3 operand (decomposed)
  * @return Product structure ready for FDA accumulation
  */
-template<int F>
 [[nodiscard]] __device__ __forceinline__
-Product fp8_multiply_unnormalized(FP8Components a, FP8Components b) {
+Product fp8_multiply_unnormalized(FP8Components a, FP8Components b, int f) {
     Product result;
     result.is_nan = false;
     result.is_inf = false;
@@ -344,8 +343,8 @@ Product fp8_multiply_unnormalized(FP8Components a, FP8Components b) {
 
     // Multiply and scale to put radix at bit F
     uint64_t raw_product = static_cast<uint64_t>(sig_a) * static_cast<uint64_t>(sig_b);
-    constexpr int SCALE_SHIFT = F - fp8::PRODUCT_RADIX_BIT;
-    if constexpr (SCALE_SHIFT >= 0) {
+    const int SCALE_SHIFT = f - fp8::PRODUCT_RADIX_BIT;
+    if (SCALE_SHIFT >= 0) {
         result.significand = raw_product << SCALE_SHIFT;
     } else {
         result.significand = raw_product >> (-SCALE_SHIFT);
@@ -365,12 +364,11 @@ Product fp8_multiply_unnormalized(FP8Components a, FP8Components b) {
  * @param b_bits Raw FP8 E4M3 bits for second operand
  * @return Product structure ready for FDA accumulation
  */
-template<int F>
 [[nodiscard]] __device__ __forceinline__
-Product fp8_multiply(uint8_t a_bits, uint8_t b_bits) {
+Product fp8_multiply(uint8_t a_bits, uint8_t b_bits, int f) {
     FP8Components a_comp = decompose_fp8_e4m3(a_bits);
     FP8Components b_comp = decompose_fp8_e4m3(b_bits);
-    return fp8_multiply_unnormalized<F>(a_comp, b_comp);
+    return fp8_multiply_unnormalized(a_comp, b_comp, f);
 }
 
 // ============================================================================
@@ -396,9 +394,8 @@ Product fp8_multiply(uint8_t a_bits, uint8_t b_bits) {
  * @param b Second FP8 E4M3 operand (decomposed)
  * @return Product structure ready for group accumulation
  */
-template<int G>
 [[nodiscard]] __device__ __forceinline__
-Product fp8_multiply_unnormalized_g(FP8Components a, FP8Components b) {
+Product fp8_multiply_unnormalized_g(FP8Components a, FP8Components b, int g) {
     Product result;
     result.is_inf = false;
     result.is_subnormal = false;
@@ -450,9 +447,9 @@ Product fp8_multiply_unnormalized_g(FP8Components a, FP8Components b) {
     // Raw product is in Q2.6 format (radix at PRODUCT_RADIX_BIT = 6).
     // SCALE_SHIFT = G - 6
     uint64_t raw_product = static_cast<uint64_t>(sig_a) * static_cast<uint64_t>(sig_b);
-    constexpr int SCALE_SHIFT = G - fp8::PRODUCT_RADIX_BIT;
+    const int SCALE_SHIFT = g - fp8::PRODUCT_RADIX_BIT;
 
-    if constexpr (SCALE_SHIFT >= 0) {
+    if (SCALE_SHIFT >= 0) {
         result.significand = raw_product << SCALE_SHIFT;
     } else {
         result.significand = raw_product >> (-SCALE_SHIFT);
@@ -478,12 +475,11 @@ Product fp8_multiply_unnormalized_g(FP8Components a, FP8Components b) {
  * @param b_bits Raw FP8 E4M3 bits for second operand
  * @return Product structure ready for group accumulation
  */
-template<int G>
 [[nodiscard]] __device__ __forceinline__
-Product fp8_multiply_g(uint8_t a_bits, uint8_t b_bits) {
+Product fp8_multiply_g(uint8_t a_bits, uint8_t b_bits, int g) {
     FP8Components a_comp = decompose_fp8_e4m3(a_bits);
     FP8Components b_comp = decompose_fp8_e4m3(b_bits);
-    return fp8_multiply_unnormalized_g<G>(a_comp, b_comp);
+    return fp8_multiply_unnormalized_g(a_comp, b_comp, g);
 }
 
 // ============================================================================
@@ -508,9 +504,8 @@ Product fp8_multiply_g(uint8_t a_bits, uint8_t b_bits) {
  * @param max_exp Maximum exponent from group alignment
  * @return Operand with F fractional bits, ready for GDFS fused-sum accumulation
  */
-template<int F, int G>
 [[nodiscard]] __device__ __forceinline__
-Operand group_to_operand_fp8(int64_t mantissa_sum, int max_exp) {
+Operand group_to_operand_fp8(int64_t mantissa_sum, int max_exp, int f, int g) {
     Operand result;
     result.is_nan = false;
     result.is_inf = false;
@@ -533,10 +528,10 @@ Operand group_to_operand_fp8(int64_t mantissa_sum, int max_exp) {
         result.sign = 1;
     }
 
-    // Shift from G-bit to F-bit radix
-    constexpr int SHIFT = F - G;
+    // Shift from g-bit to f-bit radix
+    const int SHIFT = f - g;
 
-    if constexpr (SHIFT >= 0) {
+    if (SHIFT >= 0) {
         result.significand = static_cast<int64_t>(mantissa_sum) << SHIFT;
     } else {
         result.significand = static_cast<int64_t>(mantissa_sum) >> (-SHIFT);
@@ -555,10 +550,10 @@ Operand group_to_operand_fp8(int64_t mantissa_sum, int max_exp) {
 // Products are streamed through registers and recomputed in Pass 2 from the
 // pre-decoded operands. Caller guarantees CHUNK_SIZE valid (zero-padded) elems.
 // Bitwise-equivalent to fp8_multiply<F> + fda_accumulate_chunk<F, CHUNK_SIZE>.
-template <int F, int CHUNK_SIZE>
+template <int CHUNK_SIZE>
 [[nodiscard]] __device__ __forceinline__ float
-fp8_cofda_mma(DecodedFrag a_frag, DecodedFrag b_frag, float c) {
-    Operand c_operand = fp32_to_operand<F>(c);
+fp8_cofda_mma(DecodedFrag a_frag, DecodedFrag b_frag, float c, int f) {
+    Operand c_operand = fp32_to_operand(c, f);
     if (c_operand.is_nan) {
         return bits_to_fp32(fp32::QNAN_BITS);
     }
@@ -583,7 +578,7 @@ fp8_cofda_mma(DecodedFrag a_frag, DecodedFrag b_frag, float c) {
 
     #pragma unroll
     for (int i = 0; i < CHUNK_SIZE; i++) {
-        Product p = fp8_multiply_predecoded<F>(a_frag[i], b_frag[i]);
+        Product p = fp8_multiply_predecoded(a_frag[i], b_frag[i], f);
         if (p.is_nan) any_nan = true;
         if (p.is_inf) {
             any_inf = true;
@@ -620,7 +615,7 @@ fp8_cofda_mma(DecodedFrag a_frag, DecodedFrag b_frag, float c) {
 
     #pragma unroll
     for (int i = 0; i < CHUNK_SIZE; i++) {
-        Product p = fp8_multiply_predecoded<F>(a_frag[i], b_frag[i]);
+        Product p = fp8_multiply_predecoded(a_frag[i], b_frag[i], f);
         if (p.is_zero || p.is_nan || p.is_inf) {
             continue;
         }
@@ -631,7 +626,7 @@ fp8_cofda_mma(DecodedFrag a_frag, DecodedFrag b_frag, float c) {
         mantissa_sum += p.sign * aligned;
     }
 
-    return fixed_to_fp32<F>(mantissa_sum, max_exp);
+    return fixed_to_fp32(mantissa_sum, max_exp, f);
 }
 
 }  // namespace mma_emu
