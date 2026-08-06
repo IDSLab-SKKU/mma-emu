@@ -1,11 +1,12 @@
 /*
  * MMA Arithmetic Design Space
  *
- * Single source of truth for the parameter values the kernels accept: the
- * fractional bitwidths, group sizes and chunk sizes that the accompanying
- * evaluation sweeps. The kernel dispatch instantiates one template per
- * (F, G, CS, GS, output dtype) combination, so bounding these sets bounds the
- * build.
+ * Single source of truth for the parameter values the kernels accept.
+ *
+ * F and G are kernel arguments, so they are bounded by a range. CS and GS
+ * select a template instantiation, so they are enumerated: the dispatch
+ * instantiates one template per (CS, GS, output dtype) combination, and
+ * bounding those sets bounds the build.
  *
  * The accumulation configurations of the commercially deployed architectures
  * all fall inside these sets: Ada (CoFDA, CS=16, F=13), Hopper (FDA, CS=32,
@@ -28,11 +29,16 @@ enum Algorithm : int64_t {
   kCoFDA = 2,  // Chain-of-FDA, C-fused accumulator
 };
 
-// Fractional bits F for CoFDA.
-inline constexpr int64_t COFDA_F[] = {3, 5, 7, 9, 10, 11, 12, 13, 17, 21, 25};
+// Fractional bits F, shared by CoFDA and the GDFS inter-group stage.
+inline constexpr int64_t F_MIN = 7;
+inline constexpr int64_t F_MAX = 35;
 
-// Inter-group fractional bits F for GDFS.
-inline constexpr int64_t GDFS_F[] = {7, 9, 10, 11, 13, 15, 25, 35};
+// Intra-group fractional bits G for GDFS. The upper bounds are the lossless
+// widths of the respective products: past them the intra-group sum carries no
+// further information, so raising G has no effect.
+inline constexpr int64_t G_MIN = 3;
+inline constexpr int64_t FP8_G_MAX = 32;  // FP8 E4M3 products
+inline constexpr int64_t FP4_G_MAX = 6;   // E2M1 products
 
 // Chunk size CS for CoFDA. NVFP4 is fixed at CS = 16 in the kernel.
 inline constexpr int64_t FP8_CS[] = {16, 32};
@@ -40,10 +46,9 @@ inline constexpr int64_t FP8_CS[] = {16, 32};
 // Group size GS for GDFS. NVFP4 is fixed at GS = 16 in the kernel.
 inline constexpr int64_t FP8_GS[] = {8, 16};
 
-// Intra-group fractional bits G for GDFS. G = 32 is the theoretical lossless
-// width for FP8 products and G = 6 for E2M1 products.
-inline constexpr int64_t FP8_G[] = {3, 4, 5, 6, 8, 13, 32};
-inline constexpr int64_t FP4_G[] = {3, 4, 5, 6};
+constexpr bool in_range(int64_t lo, int64_t hi, int64_t value) {
+  return lo <= value && value <= hi;
+}
 
 template <size_t N>
 constexpr bool contains(const int64_t (&set)[N], int64_t value) {
