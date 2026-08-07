@@ -30,6 +30,13 @@ import contextlib
 import pytest
 import torch
 
+from tests.kernels.quantization.mma_emu_arch import (
+    ALGORITHM_IDS,
+    ARCH_ACCUMULATION,
+    COFDA,
+    GDFS,
+    SM,
+)
 from tests.kernels.utils import opcheck
 from vllm._custom_ops import scaled_fp4_quant
 from vllm.config import VllmConfig, set_current_vllm_config
@@ -56,42 +63,15 @@ if not current_platform.is_cuda():
 if not hasattr(torch.ops._C, "mma_emu_scaled_fp8_mm"):
     pytest.skip("vLLM was not built with the MMA-Emu kernels", allow_module_level=True)
 
-# design_space::Algorithm, for the operator-level tests at the end.
-GDFS, COFDA = 1, 2
-ALGORITHM_IDS = {"gdfs": GDFS, "cofda": COFDA}
-
-CAPABILITY = current_platform.get_device_capability()
-SM = CAPABILITY[0] * 10 + CAPABILITY[1]
-
 FLOAT4_MAX, FLOAT8_MAX = 6.0, 448.0
-
-# The accumulation each architecture implements, as the configuration you would
-# pass to run it. FDA is CoFDA with the chunk spanning the K tile, so it is
-# expressed as CoFDA with the corresponding chunk size.
-ARCH_ACCUMULATION: dict[int, dict[str, MmaEmuConfig]] = {
-    # Ada
-    89: {"fp8": MmaEmuConfig(algorithm="cofda", f_bits=13, chunk_size=16)},
-    # Hopper
-    90: {"fp8": MmaEmuConfig(algorithm="cofda", f_bits=13, chunk_size=32)},
-    # Blackwell, data center
-    100: {
-        "fp8": MmaEmuConfig(algorithm="cofda", f_bits=25, chunk_size=32),
-        "nvfp4": MmaEmuConfig(algorithm="gdfs", f_bits=35, g_bits=6),
-    },
-    # Blackwell, workstation
-    120: {
-        "fp8": MmaEmuConfig(algorithm="cofda", f_bits=25, chunk_size=32),
-        "nvfp4": MmaEmuConfig(algorithm="gdfs", f_bits=35, g_bits=6),
-    },
-}
 
 
 def arch_config(fmt: str) -> MmaEmuConfig:
     """The configuration this GPU implements, or skip if it is not recorded."""
-    if SM not in ARCH_ACCUMULATION:
+    if SM is None or SM not in ARCH_ACCUMULATION:
         pytest.skip(
             f"No accumulation configuration recorded for SM{SM}. Add one to "
-            f"ARCH_ACCUMULATION to test this architecture."
+            f"ARCH_ACCUMULATION in mma_emu_arch.py to test this architecture."
         )
     if fmt not in ARCH_ACCUMULATION[SM]:
         pytest.skip(f"SM{SM} has no {fmt} entry in ARCH_ACCUMULATION.")

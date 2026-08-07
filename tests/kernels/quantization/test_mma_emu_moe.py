@@ -22,10 +22,7 @@ from vllm.platforms import current_platform
 if not current_platform.is_cuda():
     pytest.skip("MMA-Emu kernels require CUDA", allow_module_level=True)
 
-GDFS, COFDA = 1, 2
-
-CAPABILITY = current_platform.get_device_capability()
-SM = CAPABILITY[0] * 10 + CAPABILITY[1]
+from tests.kernels.quantization.mma_emu_arch import COFDA, GDFS, SM  # noqa: E402
 
 OUT_DTYPES = [torch.bfloat16, torch.float16]
 
