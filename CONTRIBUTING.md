@@ -21,9 +21,9 @@ uv pip install --python .venv/bin/python -r requirements/lint.txt
 
 Two things worth knowing before you start:
 
-- **Build with `tools/build_mma_emu.sh`.** A plain `pip install -e .` will
-  replace your torch with a different CUDA build, because `dependencies` in
-  `pyproject.toml` is dynamic.
+- **Build with `--no-deps`.** A plain `pip install -e .` will replace your torch
+  with a different CUDA build, because `dependencies` in `pyproject.toml` is
+  dynamic. See [README.md](README.md#build) for the full sequence.
 - **Run the kernel tests before proposing a change to the kernels.** They need
   a GPU and so are not run in CI:
 

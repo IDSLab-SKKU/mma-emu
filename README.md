@@ -121,7 +121,7 @@ for f in (7, 13, 21, 25, 35):
 
 ## Building
 
-### What this version of vLLM asks for
+### Requirements
 
 The fork tracks upstream at `43c4bdcae`, which pins:
 
@@ -132,79 +132,106 @@ The fork tracks upstream at `43c4bdcae`, which pins:
 | torchvision | 0.28.0 | `requirements/cuda.txt` |
 | torchaudio | 2.11.0 | `requirements/cuda.txt` |
 | CUDA | **13.0** | `VLLM_MAIN_CUDA_VERSION` in `vllm/envs.py`; `docker/Dockerfile` builds on 13.0.3 |
+| Driver | ≥ 580 | what CUDA 13.0 requires |
 
-CUDA 13.0 needs an NVIDIA driver of at least 580.
+The emulation kernels themselves run on CUDA cores, so they need no CUTLASS and
+no architecture-specific MMA instruction — only an architecture that supports
+the element type. FP8 needs SM89; NVFP4 needs SM100 and CUDA 12.8.
 
-Upstream's installation prose still says the binaries default to CUDA 12.9.
-The code disagrees and is newer: `VLLM_MAIN_CUDA_VERSION` is `13.0`,
-`requirements/cuda.txt` pins the `[cu13]` extras, and the Dockerfile builds on
-13.0.3.
-
-**This fork was developed against CUDA 12.9 instead**, because the machine's
-driver predates 580 and torch 2.13.0 has no cu128 build. Everything works
-there, but it is not what upstream targets, and a few workarounds exist only
-because of it — see [Environment caveats](#environment-caveats) and
-[CUDA13_MIGRATION.md](CUDA13_MIGRATION.md).
-
-### The emulation kernels
-
-They run on CUDA cores, so they need no CUTLASS and no architecture-specific
-MMA instruction — only an architecture that supports the element type. FP8
-needs SM89; NVFP4 needs SM100 and CUDA 12.8.
+### Build
 
 ```bash
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python torch==2.13.0 \
-  --index-url https://download.pytorch.org/whl/cu129
+uv pip install --python .venv/bin/python \
+  torch==2.13.0 torchvision==0.28.0 torchaudio==2.11.0 \
+  --index-url https://download.pytorch.org/whl/cu130
 uv pip install --python .venv/bin/python -r requirements/build/cuda.txt
-uv pip install --python .venv/bin/python -r requirements/common.txt
-uv pip install --python .venv/bin/python -e . --no-deps --no-build-isolation
-
-tools/build_mma_emu.sh
+uv pip install --python .venv/bin/python -r requirements/cuda.txt
+uv pip install --python .venv/bin/python pytest tblib
+CMAKE_BUILD_TYPE=Release MAX_JOBS=32 uv pip install --python .venv/bin/python \
+  -e . --no-deps --no-build-isolation
 ```
 
-If you are going to change anything, install the git hooks too. CI runs the
-same checks, and finding out there is slower than finding out here:
+Use `cu130` and not `cu132`, which carries torch 2.13.0 and torchvision 0.28.0
+but no torchaudio 2.11.0.
+
+`requirements/build/cuda.txt` is the build backend — cmake, ninja, setuptools —
+which `--no-build-isolation` needs present already; `requirements/cuda.txt` is
+the runtime set. `pytest` and `tblib` are all the kernel tests need on top of
+it: `tests/conftest.py` wants transformers and Pillow too, but the runtime set
+has already brought those.
+
+Not `requirements/test/cuda.txt`. That is upstream's whole CI matrix, and one
+of its entries — `arctic-inference`, for a suffix-decoding test unrelated to
+anything here — is an sdist whose build requires `torch==2.7.0`, a version the
+cu130 index does not carry. Nothing in it is needed to exercise the emulation.
+
+Nothing on the last line is decoration:
+
+| | If you drop it |
+| --- | --- |
+| `--no-deps` | `dependencies` in `pyproject.toml` is dynamic, so the install resolves `requirements/cuda.txt`, sees `torch==2.13.0` with no local version, and replaces the `+cu130` wheel with PyPI's default build |
+| `--no-build-isolation` | the build runs in a throwaway environment against a different torch |
+| `MAX_JOBS=32` | `setup.py` uses every core; the heaviest CUTLASS units take several GB each, and the build dies to the OOM killer rather than to an error you can read |
+| `CMAKE_BUILD_TYPE=Release` | `setup.py` falls back to `RelWithDebInfo`, carrying debug info through every CUDA unit — slower to compile, and a far larger `.so` |
+
+The target architecture comes from the GPU in the machine. Building for another
+one — the grouped MoE kernel is Hopper-only — means saying so:
 
 ```bash
-uv pip install --python .venv/bin/python -r requirements/lint.txt
-.venv/bin/pre-commit install
+TORCH_CUDA_ARCH_LIST=9.0 CMAKE_BUILD_TYPE=Release MAX_JOBS=32 \
+  uv pip install --python .venv/bin/python -e . --no-deps --no-build-isolation
 ```
 
-**Use `tools/build_mma_emu.sh` rather than `pip install -e .` on its own.**
-The `dependencies` field in `pyproject.toml` is dynamic, so any build that
-resolves dependencies reads `requirements/cuda.txt` and replaces your torch
-with a different CUDA build.
-
-### Environment caveats
-
-These are properties of the machine this fork was developed on — an SM120 GPU
-on a driver capped at CUDA 12.8 — rather than of the fork itself, but they are
-the difference between a working install and a confusing one.
-
-**On CUDA 13 these no longer apply, and one of them is actively harmful.** See
-[CUDA13_MIGRATION.md](CUDA13_MIGRATION.md) before installing on a newer
-toolchain.
-
-**CUDA 12.x with a pre-580 driver.** torch 2.13.0 has no cu128 build, and its
-cu130 and cu132 builds need driver ≥ 580. On an older driver, cu129 is the only
-option. `torch.utils.cpp_extension` refuses a CUDA major-version mismatch
-between nvcc and torch, so the toolkit has to be CUDA 12.x as well.
-`tools/build_mma_emu.sh` checks this before building.
-
-**Triton needs a matching ptxas.** For SM100 and above, Triton uses a separate
-`ptxas-blackwell` binary that ships as CUDA 13.1 and emits PTX ISA 9.1, which a
-CUDA 12.x driver cannot load — every Triton kernel then fails with
-`device kernel image is invalid`. Point it at the CUDA 12 ptxas:
+After editing a kernel, compile in place rather than reinstalling:
 
 ```bash
-export TRITON_PTXAS_BLACKWELL_PATH=$PWD/.venv/lib/python3.12/site-packages/triton/backends/nvidia/bin/ptxas
-rm -rf ~/.triton/cache   # otherwise the previous cubins are reused and it still fails
+CMAKE_BUILD_TYPE=Release MAX_JOBS=32 .venv/bin/python setup.py build_ext --inplace
 ```
 
-**FlashInfer.** If you skipped installing it, set `VLLM_USE_FLASHINFER_SAMPLER=0`.
+Keep that environment identical between runs. CMake reconfigures when any of it
+moves, which turns an incremental rebuild into a full one — the same reason not
+to `rm -rf build` out of habit. To narrow it further, the `mma_emu` sources
+compile into a single extension:
+
+```bash
+BUILD=$(echo build/temp.*)
+cmake --build "$BUILD" -j 32 --target _C_stable_libtorch
+cmake --install "$BUILD" --component _C_stable_libtorch --prefix "$PWD"
+```
+
+### Build check
+
+The configure step names the kernels it is building:
+
+```text
+-- Building mma_emu_scaled_fp8_mm for archs: 12.0
+-- Building mma_emu_scaled_nvfp4_mm for archs: 12.0
+-- Not building mma_emu_moe_mm: Hopper (9.0) only, and it is not in CUDA target architectures
+```
+
+Then, in order of what each rules out:
+
+```bash
+# the wheel that was installed is the one that survived
+.venv/bin/python -c "import torch; print(torch.__version__)"        # 2.13.0+cu130
+
+# the operators registered
+.venv/bin/python -c "import torch, vllm._C_stable_libtorch; print([
+    o for o in ('mma_emu_scaled_fp8_mm', 'mma_emu_scaled_nvfp4_mm', 'mma_emu_moe_mm')
+    if hasattr(torch.ops._C, o)])"
+
+# twelve kernel instantiations, no more. They are device symbols, so they live
+# in the fatbinary rather than in the ELF symbol table nm reads
+cuobjdump --dump-elf-symbols vllm/_C_stable_libtorch.abi3.so \
+  | grep -oE "mma_emu_scaled_[a-z0-9_]+kernel[a-zA-Z0-9_]*" | sort -u | wc -l
+```
+
+What settles it is the bit-exactness run below.
 
 ## Testing
+
+`pytest` and `tblib`, installed as part of the build above, are all these need.
 
 ```bash
 pytest tests/kernels/quantization/test_mma_emu.py \

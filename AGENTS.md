@@ -20,18 +20,17 @@ as upstream bugs (see [Divergence](#2-divergence)).
 **Never use system `python3` or bare `pip`/`pip install`.** All Python commands
 go through `uv` and `.venv/bin/python`.
 
-Follow the build instructions in [README.md](README.md). Two points bite hard
+Follow the build instructions in [README.md](README.md). One point bites hard
 enough to repeat:
 
-- **Build with `tools/build_mma_emu.sh`**, not `pip install -e .`. The
-  `dependencies` field in `pyproject.toml` is dynamic, so a dependency-resolving
-  build replaces torch with a different CUDA build and silently breaks the
-  environment.
-- **Set `TRITON_PTXAS_BLACKWELL_PATH`** on SM100+ with a CUDA 12.x driver, and
-  clear `~/.triton/cache` when you do. Without it every Triton kernel fails with
-  `device kernel image is invalid`, which looks like a vLLM bug and is not. On
-  CUDA 13 do **not** set it — see [CUDA13_MIGRATION.md](CUDA13_MIGRATION.md),
-  which lists every workaround that exists only because of CUDA 12.
+- **Never install without `--no-deps`.** The `dependencies` field in
+  `pyproject.toml` is dynamic, so a dependency-resolving build replaces torch
+  with a different CUDA build and silently breaks the environment. The build is
+  `uv pip install -e . --no-deps --no-build-isolation`, with `MAX_JOBS` to cap
+  the job count and `CMAKE_BUILD_TYPE=Release` because the fallback is
+  `RelWithDebInfo`. Rebuild with `setup.py build_ext --inplace` rather than
+  reinstalling, and keep that environment identical between runs or CMake
+  reconfigures.
 
 ## 2. Divergence
 
