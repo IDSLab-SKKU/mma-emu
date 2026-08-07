@@ -59,6 +59,11 @@ alongside the products.
 
 Everything else in vLLM behaves as upstream does.
 
+The operators require contiguous operands. They index with a packed stride, so
+a sliced view would be read as though it were dense; `cutlass_scaled_mm` has the
+same limitation and returns a wrong product instead of saying so. Nothing on
+vLLM's own path passes one.
+
 **The MoE kernel is provisional.** It builds for SM90 alone, because the check
 that makes the dense kernels trustworthy is not available elsewhere:
 `cutlass_moe_mm` has SM90 and SM100 implementations and no SM120 one, so on a
@@ -167,19 +172,43 @@ rm -rf ~/.triton/cache   # otherwise the previous cubins are reused and it still
 ## Testing
 
 ```bash
-pytest tests/kernels/quantization/test_mma_emu.py
+pytest tests/kernels/quantization/test_mma_emu.py \
+       tests/kernels/quantization/test_mma_emu_selection.py \
+       tests/kernels/quantization/test_mma_emu_moe.py
 ```
 
-The tests detect the GPU, look up the accumulation its tensor cores implement,
-and require the emulation at that configuration to reproduce
-`cutlass_scaled_mm` and `cutlass_scaled_fp4_mm` bit for bit over a sweep of
-matrix shapes.
+| File | What it checks | Needs |
+| --- | --- | --- |
+| `test_mma_emu.py` | The emulation reproduces the native kernel bit for bit, over a sweep of matrix shapes | a GPU |
+| `test_mma_emu_selection.py` | The emulation is not selected unless asked for, and refuses what it cannot do | nothing |
+| `test_mma_emu_moe.py` | The grouped MoE kernel against `cutlass_moe_mm` | an SM90 GPU |
+
+The first goes through the linear-kernel classes rather than the operators, so
+it covers the weight preparation and activation quantisation around the GEMM as
+well as the arithmetic.
+
+The second matters more than its size suggests. The emulation kernels sit at the
+head of the candidate list, so the only thing keeping them off every layer is
+that they decline when no algorithm is configured — and a kernel that wrongly
+accepts still returns correct numbers, just far slower, so nothing would
+announce it. Those tests need neither a GPU nor a built extension.
+
+The run says which comparison it is about to make:
+
+```text
+MMA-Emu: SM120 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition)
+  fp8    emulating CoFDA F=25 CS=32     compared bit-exactly against cutlass_scaled_mm
+  nvfp4  emulating GDFS F=35 G=6 GS=16  compared bit-exactly against cutlass_scaled_fp4_mm
+  moe    not built for SM120 — skipped
+```
 
 They need a GPU and so are not run in CI, which lints only.
 
 **Only SM120 has been checked directly.** The SM89, SM90 and SM100 entries in
-`ARCH_ACCUMULATION` come from the paper. A failure on those architectures may
-mean the recorded configuration is wrong rather than that the emulation is.
+`ARCH_ACCUMULATION`, in `tests/kernels/quantization/mma_emu_arch.py`, come from
+the paper. A failure on those architectures may mean the recorded configuration
+is wrong rather than that the emulation is, and the header says so when it is
+running on one of them.
 
 ## Relationship to upstream vLLM
 
