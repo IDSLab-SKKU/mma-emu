@@ -23,14 +23,11 @@ constexpr int64_t round_up(int64_t x, int64_t y) { return (x + y - 1) / y * y; }
 
 // Emulated NVFP4 scaled mm. Mirrors the cutlass_scaled_fp4_mm interface, with
 // the accumulation configuration appended.
-void mma_emu_scaled_nvfp4_mm(torch::stable::Tensor& out,
-                             const torch::stable::Tensor& a,
-                             const torch::stable::Tensor& b,
-                             const torch::stable::Tensor& a_sf,
-                             const torch::stable::Tensor& b_sf,
-                             const torch::stable::Tensor& alpha,
-                             int64_t algorithm, int64_t f_bits,
-                             int64_t g_bits) {
+void mma_emu_scaled_nvfp4_mm(
+    torch::stable::Tensor& out, const torch::stable::Tensor& a,
+    const torch::stable::Tensor& b, const torch::stable::Tensor& a_sf,
+    const torch::stable::Tensor& b_sf, const torch::stable::Tensor& alpha,
+    int64_t algorithm, int64_t f_bits, int64_t g_bits) {
   STD_TORCH_CHECK(a.scalar_type() == kFloat4E2m1x2 &&
                   b.scalar_type() == kFloat4E2m1x2);
   STD_TORCH_CHECK(a_sf.scalar_type() == kScaleDtype &&
@@ -49,8 +46,9 @@ void mma_emu_scaled_nvfp4_mm(torch::stable::Tensor& out,
   const int64_t n = b.size(0);
   const int64_t k = a.size(1) * 2;
 
-  STD_TORCH_CHECK(a.size(1) == b.size(1),
-                  "MMA-Emu scaled_nvfp4_mm: a and b shapes cannot be multiplied");
+  STD_TORCH_CHECK(
+      a.size(1) == b.size(1),
+      "MMA-Emu scaled_nvfp4_mm: a and b shapes cannot be multiplied");
   STD_TORCH_CHECK(out.size(0) == m && out.size(1) == n);
 
   // K must be divisible by 32 (block of 16, packed two per byte) and N by 32
@@ -67,12 +65,14 @@ void mma_emu_scaled_nvfp4_mm(torch::stable::Tensor& out,
   const int64_t rounded_m = round_up(m, 128);
   const int64_t rounded_n = round_up(n, 128);
   const int64_t rounded_k = round_up(k / 16, 4);
-  STD_TORCH_CHECK(a_sf.size(0) == rounded_m && a_sf.size(1) == rounded_k,
-                  "MMA-Emu scaled_nvfp4_mm: a_sf must be padded and swizzled to (",
-                  rounded_m, ", ", rounded_k, ")");
-  STD_TORCH_CHECK(b_sf.size(0) == rounded_n && b_sf.size(1) == rounded_k,
-                  "MMA-Emu scaled_nvfp4_mm: b_sf must be padded and swizzled to (",
-                  rounded_n, ", ", rounded_k, ")");
+  STD_TORCH_CHECK(
+      a_sf.size(0) == rounded_m && a_sf.size(1) == rounded_k,
+      "MMA-Emu scaled_nvfp4_mm: a_sf must be padded and swizzled to (",
+      rounded_m, ", ", rounded_k, ")");
+  STD_TORCH_CHECK(
+      b_sf.size(0) == rounded_n && b_sf.size(1) == rounded_k,
+      "MMA-Emu scaled_nvfp4_mm: b_sf must be padded and swizzled to (",
+      rounded_n, ", ", rounded_k, ")");
 
   const auto out_dtype = out.scalar_type();
   STD_TORCH_CHECK(out_dtype == torch::headeronly::ScalarType::BFloat16 ||

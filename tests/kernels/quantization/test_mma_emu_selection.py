@@ -243,9 +243,9 @@ def test_asking_for_the_emulation_without_configuring_it_is_an_error():
         with_config(MmaEmuConfig(), linear_backend="mma_emu"),
         pytest.raises(ValueError, match="Failed to find a kernel"),
     ):
-            choose_scaled_mm_linear_kernel(
-                fp8_layer(), _POSSIBLE_FP8_KERNELS, compute_capability=120
-            )
+        choose_scaled_mm_linear_kernel(
+            fp8_layer(), _POSSIBLE_FP8_KERNELS, compute_capability=120
+        )
 
 
 def test_emulation_precedes_cutlass_in_the_candidate_list():

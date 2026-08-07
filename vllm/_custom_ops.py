@@ -835,8 +835,17 @@ def mma_emu_scaled_fp8_mm(
 
     out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
     torch.ops._C.mma_emu_scaled_fp8_mm(
-        out, a, b, scale_a, scale_b, bias, algorithm, f_bits, g_bits,
-        group_size, chunk_size,
+        out,
+        a,
+        b,
+        scale_a,
+        scale_b,
+        bias,
+        algorithm,
+        f_bits,
+        g_bits,
+        group_size,
+        chunk_size,
     )
     return out.view(*target_shape)
 

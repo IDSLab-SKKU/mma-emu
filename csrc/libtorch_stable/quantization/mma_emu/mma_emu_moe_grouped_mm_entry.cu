@@ -38,12 +38,13 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
 
   STD_TORCH_CHECK(
       a_tensors.scalar_type() == torch::headeronly::ScalarType::Float8_e4m3fn &&
-          b_tensors.scalar_type() == torch::headeronly::ScalarType::Float8_e4m3fn,
+          b_tensors.scalar_type() ==
+              torch::headeronly::ScalarType::Float8_e4m3fn,
       "MMA-Emu moe_mm: a and b must be float8_e4m3fn");
 
-  STD_TORCH_CHECK(a_tensors.dim() == 2 && b_tensors.dim() == 3 &&
-                      out_tensors.dim() == 2,
-                  "MMA-Emu moe_mm: expected a [P, K], b [E, N, K], out [P, N]");
+  STD_TORCH_CHECK(
+      a_tensors.dim() == 2 && b_tensors.dim() == 3 && out_tensors.dim() == 2,
+      "MMA-Emu moe_mm: expected a [P, K], b [E, N, K], out [P, N]");
 
   STD_TORCH_CHECK(a_tensors.stride(1) == 1 && out_tensors.stride(1) == 1,
                   "MMA-Emu moe_mm: a and out must be row-major");
@@ -106,8 +107,9 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
                   "MMA-Emu moe_mm: expert weights must be packed back to back");
   STD_TORCH_CHECK(b_scales.numel() == num_experts,
                   "MMA-Emu moe_mm: b_scales must have one entry per expert");
-  STD_TORCH_CHECK(expert_offsets.numel() >= num_experts,
-                  "MMA-Emu moe_mm: expert_offsets is shorter than the expert count");
+  STD_TORCH_CHECK(
+      expert_offsets.numel() >= num_experts,
+      "MMA-Emu moe_mm: expert_offsets is shorter than the expert count");
   STD_TORCH_CHECK(problem_sizes.numel() >= num_experts * 3,
                   "MMA-Emu moe_mm: problem_sizes must be [E, 3]");
 
@@ -116,9 +118,9 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
                       out_dtype == torch::headeronly::ScalarType::Half,
                   "MMA-Emu moe_mm: out must be BFloat16 or Half");
 
-  STD_TORCH_CHECK(algorithm == ds::kCoFDA,
-                  "MMA-Emu moe_mm: only algorithm ", int64_t{ds::kCoFDA},
-                  " (CoFDA) is supported for MoE, got ", algorithm);
+  STD_TORCH_CHECK(algorithm == ds::kCoFDA, "MMA-Emu moe_mm: only algorithm ",
+                  int64_t{ds::kCoFDA}, " (CoFDA) is supported for MoE, got ",
+                  algorithm);
 
   // Backstop: the Python selector rejects a bad configuration earlier and with
   // the same wording, but this operator is reachable directly. G and the group

@@ -114,7 +114,7 @@ void cutlass_scaled_fp4_mm(torch::stable::Tensor& D,
                            torch::stable::Tensor const& B_sf,
                            torch::stable::Tensor const& alpha);
 
-#ifdef VLLM_ENABLE_MMA_EMU_FP8
+  #ifdef VLLM_ENABLE_MMA_EMU_FP8
 void mma_emu_scaled_fp8_mm(torch::stable::Tensor& out,
                            torch::stable::Tensor const& a,
                            torch::stable::Tensor const& b,
@@ -127,9 +127,9 @@ void mma_emu_scaled_fp8_mm(torch::stable::Tensor& out,
 std::string mma_emu_config_error(int64_t algorithm, int64_t f_bits,
                                  int64_t g_bits, int64_t group_size,
                                  int64_t chunk_size, bool is_fp4);
-#endif
+  #endif
 
-#ifdef VLLM_ENABLE_MMA_EMU_MOE
+  #ifdef VLLM_ENABLE_MMA_EMU_MOE
 // Hopper only; see the MMA_EMU_MOE_ARCHS gate in CMakeLists.txt.
 void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
                     torch::stable::Tensor const& a_tensors,
@@ -143,9 +143,9 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
                     torch::stable::Tensor const& c_strides, bool per_act_token,
                     bool per_out_ch, int64_t algorithm, int64_t f_bits,
                     int64_t chunk_size);
-#endif
+  #endif
 
-#ifdef VLLM_ENABLE_MMA_EMU_NVFP4
+  #ifdef VLLM_ENABLE_MMA_EMU_NVFP4
 void mma_emu_scaled_nvfp4_mm(torch::stable::Tensor& out,
                              torch::stable::Tensor const& a,
                              torch::stable::Tensor const& b,
@@ -153,7 +153,7 @@ void mma_emu_scaled_nvfp4_mm(torch::stable::Tensor& out,
                              torch::stable::Tensor const& b_sf,
                              torch::stable::Tensor const& alpha,
                              int64_t algorithm, int64_t f_bits, int64_t g_bits);
-#endif
+  #endif
 
 void cutlass_fp4_group_mm(torch::stable::Tensor& output,
                           const torch::stable::Tensor& a,

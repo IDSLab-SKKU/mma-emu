@@ -35,7 +35,8 @@ constexpr int K_BLOCKS_PER_TILE = 4;  ///< 4 k_blocks per k_tile
  *      - row_in_32 = (m % 128) % 32    (row within 32-row block)
  *      - k_tile = k_block / 4
  *      - k_in_tile = k_block % 4
- *   3. Permute by (0, 3, 2, 1, 4): [m_tile, k_tile, row_in_32, group_of_4, k_in_tile]
+ *   3. Permute by (0, 3, 2, 1, 4): [m_tile, k_tile, row_in_32, group_of_4,
+ * k_in_tile]
  *   4. Swizzled memory: [num_m_tiles, k_tiles, 32, 4, 4]
  *
  * @tparam BLKSZ Elements covered by one block scale
@@ -46,32 +47,32 @@ constexpr int K_BLOCKS_PER_TILE = 4;  ///< 4 k_blocks per k_tile
  * @param K Total K dimension
  * @return Scale factor value (UE4M3)
  */
-template<int BLKSZ = fp4::BLOCK_SIZE>
-[[nodiscard]] __device__ __forceinline__
-uint8_t read_scale(const uint8_t* sf_swizzled, int m, int k_block, int M, int K) {
-    // Compute k_tiles dimension
-    const int num_k_blocks = (K + BLKSZ - 1) / BLKSZ;
-    const int k_tiles = (num_k_blocks + K_BLOCKS_PER_TILE - 1) / K_BLOCKS_PER_TILE;
+template <int BLKSZ = fp4::BLOCK_SIZE>
+[[nodiscard]] __device__ __forceinline__ uint8_t
+read_scale(const uint8_t* sf_swizzled, int m, int k_block, int M, int K) {
+  // Compute k_tiles dimension
+  const int num_k_blocks = (K + BLKSZ - 1) / BLKSZ;
+  const int k_tiles =
+      (num_k_blocks + K_BLOCKS_PER_TILE - 1) / K_BLOCKS_PER_TILE;
 
-    // Decompose m into tile and intra-tile position
-    const int m_tile = m / M_TILE_SIZE;
-    const int m_in_tile = m % M_TILE_SIZE;
-    const int group_of_4 = m_in_tile / 32;  // which of the 4 groups (0-3)
-    const int row_in_32 = m_in_tile % 32;   // row within 32-row block (0-31)
+  // Decompose m into tile and intra-tile position
+  const int m_tile = m / M_TILE_SIZE;
+  const int m_in_tile = m % M_TILE_SIZE;
+  const int group_of_4 = m_in_tile / 32;  // which of the 4 groups (0-3)
+  const int row_in_32 = m_in_tile % 32;   // row within 32-row block (0-31)
 
-    // Decompose k_block into tile and intra-tile position
-    const int k_tile = k_block / K_BLOCKS_PER_TILE;
-    const int k_in_tile = k_block % K_BLOCKS_PER_TILE;
+  // Decompose k_block into tile and intra-tile position
+  const int k_tile = k_block / K_BLOCKS_PER_TILE;
+  const int k_in_tile = k_block % K_BLOCKS_PER_TILE;
 
-    // Swizzled memory layout: [m_tile, k_tile, row_in_32, group_of_4, k_in_tile]
-    // Linear index: k_in_tile + 4 * (group_of_4 + 4 * (row_in_32 + 32 * (k_tile + k_tiles * m_tile)))
-    const int swizzled_idx = k_in_tile +
-                             4 * (group_of_4 +
-                             4 * (row_in_32 +
-                             32 * (k_tile +
-                             k_tiles * m_tile)));
+  // Swizzled memory layout: [m_tile, k_tile, row_in_32, group_of_4, k_in_tile]
+  // Linear index: k_in_tile + 4 * (group_of_4 + 4 * (row_in_32 + 32 * (k_tile +
+  // k_tiles * m_tile)))
+  const int swizzled_idx =
+      k_in_tile +
+      4 * (group_of_4 + 4 * (row_in_32 + 32 * (k_tile + k_tiles * m_tile)));
 
-    return sf_swizzled[swizzled_idx];
+  return sf_swizzled[swizzled_idx];
 }
 
 }  // namespace swizzle

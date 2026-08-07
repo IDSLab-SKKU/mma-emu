@@ -38,15 +38,20 @@ void mma_emu_scaled_fp8_mm(torch::stable::Tensor& out,
   STD_TORCH_CHECK(b.stride(1) == b.size(0),
                   "MMA-Emu scaled_fp8_mm: b must be contiguous");
 
-  STD_TORCH_CHECK(a.scalar_type() == torch::headeronly::ScalarType::Float8_e4m3fn);
-  STD_TORCH_CHECK(b.scalar_type() == torch::headeronly::ScalarType::Float8_e4m3fn);
+  STD_TORCH_CHECK(a.scalar_type() ==
+                  torch::headeronly::ScalarType::Float8_e4m3fn);
+  STD_TORCH_CHECK(b.scalar_type() ==
+                  torch::headeronly::ScalarType::Float8_e4m3fn);
 
   // Per-tensor scales only: the emulation applies a single scale in the
   // epilogue rather than a per-row/column vector.
-  STD_TORCH_CHECK(a_scales.numel() == 1 && b_scales.numel() == 1,
-                  "MMA-Emu scaled_fp8_mm: only per-tensor scales are supported");
-  STD_TORCH_CHECK(a_scales.scalar_type() == torch::headeronly::ScalarType::Float);
-  STD_TORCH_CHECK(b_scales.scalar_type() == torch::headeronly::ScalarType::Float);
+  STD_TORCH_CHECK(
+      a_scales.numel() == 1 && b_scales.numel() == 1,
+      "MMA-Emu scaled_fp8_mm: only per-tensor scales are supported");
+  STD_TORCH_CHECK(a_scales.scalar_type() ==
+                  torch::headeronly::ScalarType::Float);
+  STD_TORCH_CHECK(b_scales.scalar_type() ==
+                  torch::headeronly::ScalarType::Float);
 
   const auto out_dtype = out.scalar_type();
   STD_TORCH_CHECK(out_dtype == torch::headeronly::ScalarType::BFloat16 ||
@@ -54,9 +59,9 @@ void mma_emu_scaled_fp8_mm(torch::stable::Tensor& out,
                   "MMA-Emu scaled_fp8_mm: out must be BFloat16 or Half");
 
   if (bias) {
-    STD_TORCH_CHECK(bias->numel() == b.size(1) && bias->is_contiguous() &&
-                        bias->dim() == 1,
-                    "MMA-Emu scaled_fp8_mm: bias must be 1D with N elements");
+    STD_TORCH_CHECK(
+        bias->numel() == b.size(1) && bias->is_contiguous() && bias->dim() == 1,
+        "MMA-Emu scaled_fp8_mm: bias must be 1D with N elements");
     STD_TORCH_CHECK(bias->scalar_type() == out_dtype,
                     "MMA-Emu scaled_fp8_mm: bias dtype must match out");
   }

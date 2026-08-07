@@ -129,9 +129,6 @@ from vllm.model_executor.kernels.linear.nvfp4 import (
 from vllm.model_executor.kernels.linear.nvfp4.cutlass import (
     CutlassNvFp4LinearKernel,
 )
-from vllm.model_executor.kernels.linear.nvfp4.mma_emu import (
-    MmaEmuNvFp4LinearKernel,
-)
 from vllm.model_executor.kernels.linear.nvfp4.emulation import (
     EmulationNvFp4LinearKernel,
 )
@@ -150,6 +147,9 @@ from vllm.model_executor.kernels.linear.nvfp4.humming import (
 )
 from vllm.model_executor.kernels.linear.nvfp4.marlin import (
     MarlinNvFp4LinearKernel,
+)
+from vllm.model_executor.kernels.linear.nvfp4.mma_emu import (
+    MmaEmuNvFp4LinearKernel,
 )
 from vllm.model_executor.kernels.linear.scaled_mm import (
     Fp8BlockScaledMMLinearKernel,
@@ -175,9 +175,6 @@ from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassFP8ScaledMMLinearKernel,
     CutlassInt8ScaledMMLinearKernel,
 )
-from vllm.model_executor.kernels.linear.scaled_mm.mma_emu import (
-    MmaEmuFP8ScaledMMLinearKernel,
-)
 from vllm.model_executor.kernels.linear.scaled_mm.deep_gemm import (
     DeepGemmFp8BlockScaledMMKernel,
 )
@@ -191,6 +188,9 @@ from vllm.model_executor.kernels.linear.scaled_mm.humming import (
 )
 from vllm.model_executor.kernels.linear.scaled_mm.marlin import (
     MarlinFP8ScaledMMLinearKernel,
+)
+from vllm.model_executor.kernels.linear.scaled_mm.mma_emu import (
+    MmaEmuFP8ScaledMMLinearKernel,
 )
 from vllm.model_executor.kernels.linear.scaled_mm.pytorch import (
     ChannelWiseTorchFP8ScaledMMLinearKernel,

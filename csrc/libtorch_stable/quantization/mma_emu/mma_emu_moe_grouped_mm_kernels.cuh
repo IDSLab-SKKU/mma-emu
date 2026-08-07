@@ -30,16 +30,18 @@ namespace vllm {
 namespace mma_emu {
 
 template <int CHUNK_SIZE, typename OutDtype>
-__launch_bounds__(FP8EmuConfig::NUM_THREADS)
-__global__ void mma_emu_moe_grouped_cofda_kernel(
-    const __nv_fp8_storage_t* __restrict__ A,    // [P, K] row-major (all experts)
-    const __nv_fp8_storage_t* __restrict__ B,    // [E, N, K]; each expert [K,N] col-major
-    OutDtype* __restrict__ C,                     // [P, N] row-major
-    const float* __restrict__ scale_a_ptr,        // scalar, shared across experts
-    const float* __restrict__ scale_b_ptr,        // [E] per-expert
-    const int32_t* __restrict__ problem_sizes,    // [E,3] = (M_e, N, K)
-    const int64_t* __restrict__ expert_offsets,   // [E] row start in A/C
-    const int N, const int K, const int f_bits) {
+__launch_bounds__(FP8EmuConfig::NUM_THREADS) __global__
+    void mma_emu_moe_grouped_cofda_kernel(
+        const __nv_fp8_storage_t* __restrict__ A,  // [P, K] row-major (all
+                                                   // experts)
+        const __nv_fp8_storage_t* __restrict__ B,  // [E, N, K]; each expert
+                                                   // [K,N] col-major
+        OutDtype* __restrict__ C,                  // [P, N] row-major
+        const float* __restrict__ scale_a_ptr,  // scalar, shared across experts
+        const float* __restrict__ scale_b_ptr,  // [E] per-expert
+        const int32_t* __restrict__ problem_sizes,   // [E,3] = (M_e, N, K)
+        const int64_t* __restrict__ expert_offsets,  // [E] row start in A/C
+        const int N, const int K, const int f_bits) {
   constexpr int BM = FP8EmuConfig::BM;
   constexpr int BN = FP8EmuConfig::BN;
   constexpr int BK = FP8EmuConfig::BK;
@@ -49,14 +51,17 @@ __global__ void mma_emu_moe_grouped_cofda_kernel(
   constexpr int BKP = BK + 1;
   constexpr int A_TILE_SIZE = BM * BK;
   constexpr int B_TILE_SIZE = BN * BK;
-  constexpr int A_ELEMS_PER_THREAD = (A_TILE_SIZE + NUM_THREADS - 1) / NUM_THREADS;
-  constexpr int B_ELEMS_PER_THREAD = (B_TILE_SIZE + NUM_THREADS - 1) / NUM_THREADS;
+  constexpr int A_ELEMS_PER_THREAD =
+      (A_TILE_SIZE + NUM_THREADS - 1) / NUM_THREADS;
+  constexpr int B_ELEMS_PER_THREAD =
+      (B_TILE_SIZE + NUM_THREADS - 1) / NUM_THREADS;
 
   const int e = blockIdx.z;
   const int M = problem_sizes[e * 3 + 0];  // M_e (rows for this expert)
   const int block_m = blockIdx.y * BM;
   const int block_n = blockIdx.x * BN;
-  if (block_m >= M || block_n >= N) return;  // ragged-M / empty-expert early exit
+  if (block_m >= M || block_n >= N)
+    return;  // ragged-M / empty-expert early exit
 
   const int64_t row0 = expert_offsets[e];
   const __nv_fp8_storage_t* Ae = A + row0 * static_cast<int64_t>(K);
@@ -73,13 +78,13 @@ __global__ void mma_emu_moe_grouped_cofda_kernel(
   get_thread_tile_position<FP8EmuConfig>(tid, thread_m, thread_n);
 
   float accum[THREAD_TILE_M][THREAD_TILE_N];
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < THREAD_TILE_M; i++)
-    #pragma unroll
+#pragma unroll
     for (int j = 0; j < THREAD_TILE_N; j++) accum[i][j] = 0.0f;
 
   for (int k_tile = 0; k_tile < K; k_tile += BK) {
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < A_ELEMS_PER_THREAD; i++) {
       int idx = tid + i * NUM_THREADS;
       if (idx < A_TILE_SIZE) {
@@ -92,7 +97,7 @@ __global__ void mma_emu_moe_grouped_cofda_kernel(
             pack_decoded(decode_operand(static_cast<uint8_t>(raw)));
       }
     }
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < B_ELEMS_PER_THREAD; i++) {
       int idx = tid + i * NUM_THREADS;
       if (idx < B_TILE_SIZE) {
@@ -106,13 +111,13 @@ __global__ void mma_emu_moe_grouped_cofda_kernel(
       }
     }
     __syncthreads();
-    #pragma unroll
+#pragma unroll
     for (int tm = 0; tm < THREAD_TILE_M; tm++) {
-      #pragma unroll
+#pragma unroll
       for (int tn = 0; tn < THREAD_TILE_N; tn++) {
         const int a_off = (thread_m + tm) * BKP;
         const int b_off = (thread_n + tn) * BKP;
-        #pragma unroll
+#pragma unroll
         for (int k_start = 0; k_start < BK; k_start += CHUNK_SIZE) {
           const DecodedFrag a_frag{&As_dec[a_off + k_start]};
           const DecodedFrag b_frag{&Bs_dec[b_off + k_start]};
@@ -124,9 +129,9 @@ __global__ void mma_emu_moe_grouped_cofda_kernel(
     __syncthreads();
   }
 
-  #pragma unroll
+#pragma unroll
   for (int tm = 0; tm < THREAD_TILE_M; tm++) {
-    #pragma unroll
+#pragma unroll
     for (int tn = 0; tn < THREAD_TILE_N; tn++) {
       int out_row = block_m + thread_m + tm;
       int out_col = block_n + thread_n + tn;
@@ -151,19 +156,23 @@ __global__ void mma_emu_moe_grouped_cofda_kernel(
 namespace detail {
 
 template <typename OutDtype>
-inline void launch_moe_cofda(
-    dim3 grid, dim3 block, cudaStream_t stream,
-    const __nv_fp8_storage_t* a, const __nv_fp8_storage_t* b, OutDtype* c,
-    const float* scale_a, const float* scale_b, const int32_t* problem_sizes,
-    const int64_t* expert_offsets, int N, int K, int f_bits, int chunk_size) {
+inline void launch_moe_cofda(dim3 grid, dim3 block, cudaStream_t stream,
+                             const __nv_fp8_storage_t* a,
+                             const __nv_fp8_storage_t* b, OutDtype* c,
+                             const float* scale_a, const float* scale_b,
+                             const int32_t* problem_sizes,
+                             const int64_t* expert_offsets, int N, int K,
+                             int f_bits, int chunk_size) {
   switch (chunk_size) {
     case 16:
-      mma_emu_moe_grouped_cofda_kernel<16, OutDtype><<<grid, block, 0, stream>>>(
-          a, b, c, scale_a, scale_b, problem_sizes, expert_offsets, N, K, f_bits);
+      mma_emu_moe_grouped_cofda_kernel<16, OutDtype>
+          <<<grid, block, 0, stream>>>(a, b, c, scale_a, scale_b, problem_sizes,
+                                       expert_offsets, N, K, f_bits);
       break;
     case 32:
-      mma_emu_moe_grouped_cofda_kernel<32, OutDtype><<<grid, block, 0, stream>>>(
-          a, b, c, scale_a, scale_b, problem_sizes, expert_offsets, N, K, f_bits);
+      mma_emu_moe_grouped_cofda_kernel<32, OutDtype>
+          <<<grid, block, 0, stream>>>(a, b, c, scale_a, scale_b, problem_sizes,
+                                       expert_offsets, N, K, f_bits);
       break;
     default:
       break;  // rejected by the operator entry point
@@ -171,11 +180,12 @@ inline void launch_moe_cofda(
 }
 
 template <typename OutDtype>
-inline void dispatch_moe(
-    dim3 grid, dim3 block, cudaStream_t stream, const void* a, const void* b,
-    void* out, const float* scale_a, const float* scale_b,
-    const int32_t* problem_sizes, const int64_t* expert_offsets, int N, int K,
-    int f_bits, int chunk_size) {
+inline void dispatch_moe(dim3 grid, dim3 block, cudaStream_t stream,
+                         const void* a, const void* b, void* out,
+                         const float* scale_a, const float* scale_b,
+                         const int32_t* problem_sizes,
+                         const int64_t* expert_offsets, int N, int K,
+                         int f_bits, int chunk_size) {
   launch_moe_cofda<OutDtype>(
       grid, block, stream, static_cast<const __nv_fp8_storage_t*>(a),
       static_cast<const __nv_fp8_storage_t*>(b), static_cast<OutDtype*>(out),
@@ -214,9 +224,9 @@ inline void mma_emu_moe_grouped_mm_emu(
         grid, block, stream, a, b, out, a_scales, b_scales, problem_sizes,
         expert_offsets, N, K, f_bits, chunk_size);
   } else {
-    detail::dispatch_moe<__half>(
-        grid, block, stream, a, b, out, a_scales, b_scales, problem_sizes,
-        expert_offsets, N, K, f_bits, chunk_size);
+    detail::dispatch_moe<__half>(grid, block, stream, a, b, out, a_scales,
+                                 b_scales, problem_sizes, expert_offsets, N, K,
+                                 f_bits, chunk_size);
   }
 }
 

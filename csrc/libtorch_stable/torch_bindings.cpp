@@ -189,7 +189,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "                      Tensor block_scale_a, Tensor block_scale_b,"
       "                      Tensor alpha) -> ()");
 
-#ifdef VLLM_ENABLE_MMA_EMU_FP8
+  #ifdef VLLM_ENABLE_MMA_EMU_FP8
   // MMA-Emu FP8 GEMM. Same interface as cutlass_scaled_mm plus the
   // accumulation configuration; restricted to per-tensor scales.
   ops.def(
@@ -206,9 +206,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "mma_emu_config_error(int algorithm, int f_bits, int g_bits,"
       "                     int group_size, int chunk_size,"
       "                     bool is_fp4) -> str");
-#endif
+  #endif
 
-#ifdef VLLM_ENABLE_MMA_EMU_MOE
+  #ifdef VLLM_ENABLE_MMA_EMU_MOE
   // MMA-Emu grouped FP8 MoE GEMM. Same interface as cutlass_moe_mm plus the
   // accumulation configuration. Per-tensor scales and CoFDA only, and built
   // for Hopper only, where cutlass_moe_mm exists to check it against.
@@ -219,9 +219,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "               Tensor b_strides, Tensor c_strides, bool per_act_token, "
       "               bool per_out_ch, int algorithm, int f_bits, "
       "               int chunk_size) -> ()");
-#endif
+  #endif
 
-#ifdef VLLM_ENABLE_MMA_EMU_NVFP4
+  #ifdef VLLM_ENABLE_MMA_EMU_NVFP4
   // MMA-Emu NVFP4 block scaled GEMM. Same interface as cutlass_scaled_fp4_mm
   // plus the accumulation configuration. CS and GS are fixed at 16.
   ops.def(
@@ -229,7 +229,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "                        Tensor block_scale_a, Tensor block_scale_b,"
       "                        Tensor alpha, int algorithm, int f_bits,"
       "                        int g_bits) -> ()");
-#endif
+  #endif
 
   // cutlass nvfp4 block scaled group GEMM
   ops.def(
@@ -747,15 +747,15 @@ STABLE_TORCH_LIBRARY_IMPL(_C, CUDA, ops) {
   // CUTLASS scaled_mm ops
   ops.impl("cutlass_scaled_mm", TORCH_BOX(&cutlass_scaled_mm));
   ops.impl("cutlass_scaled_mm_azp", TORCH_BOX(&cutlass_scaled_mm_azp));
-#ifdef VLLM_ENABLE_MMA_EMU_FP8
+  #ifdef VLLM_ENABLE_MMA_EMU_FP8
   ops.impl("mma_emu_scaled_fp8_mm", TORCH_BOX(&mma_emu_scaled_fp8_mm));
-#endif
-#ifdef VLLM_ENABLE_MMA_EMU_MOE
+  #endif
+  #ifdef VLLM_ENABLE_MMA_EMU_MOE
   ops.impl("mma_emu_moe_mm", TORCH_BOX(&mma_emu_moe_mm));
-#endif
-#ifdef VLLM_ENABLE_MMA_EMU_NVFP4
+  #endif
+  #ifdef VLLM_ENABLE_MMA_EMU_NVFP4
   ops.impl("mma_emu_scaled_nvfp4_mm", TORCH_BOX(&mma_emu_scaled_nvfp4_mm));
-#endif
+  #endif
   ops.impl("cutlass_moe_mm", TORCH_BOX(&cutlass_moe_mm));
   ops.impl("get_cutlass_moe_mm_data", TORCH_BOX(&get_cutlass_moe_mm_data));
   ops.impl("get_cutlass_moe_mm_problem_sizes_from_expert_offsets",
@@ -912,9 +912,9 @@ STABLE_TORCH_LIBRARY_IMPL(_C_cuda_utils, CompositeExplicitAutograd,
 // ops.impl("op_name", &func) without a dispatch key in the non-stable API.
 STABLE_TORCH_LIBRARY_IMPL(_C, CompositeExplicitAutograd, ops) {
 #ifndef USE_ROCM
-#ifdef VLLM_ENABLE_MMA_EMU_FP8
+  #ifdef VLLM_ENABLE_MMA_EMU_FP8
   ops.impl("mma_emu_config_error", TORCH_BOX(&mma_emu_config_error));
-#endif
+  #endif
   ops.impl("cutlass_scaled_mm_supports_fp8",
            TORCH_BOX(&cutlass_scaled_mm_supports_fp8));
   ops.impl("cutlass_group_gemm_supported",
