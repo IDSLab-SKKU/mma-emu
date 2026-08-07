@@ -209,13 +209,15 @@ def test_config_rejects_an_unrecognised_algorithm():
 
 
 @needs_ops
-def test_cutlass_is_selected_when_emulation_is_off():
+def test_emulation_is_not_selected_when_it_is_off():
     """The emulation is first in the list, and must still lose by default."""
     with with_config(MmaEmuConfig()):
         chosen = choose_scaled_mm_linear_kernel(
             fp8_layer(), _POSSIBLE_FP8_KERNELS, compute_capability=120
         )
-    assert chosen is CutlassFP8ScaledMMLinearKernel
+    # Which kernel wins instead is the environment's business — FlashInfer
+    # outranks CUTLASS wherever it is installed — so name only what must lose.
+    assert chosen is not MmaEmuFP8ScaledMMLinearKernel
 
 
 @needs_ops
