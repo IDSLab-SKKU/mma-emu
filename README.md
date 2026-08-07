@@ -26,6 +26,14 @@ That runs an FP8 model whose linear layers accumulate the way an Ada tensor
 core does, on whatever GPU you happen to own. Change `f_bits` and the
 arithmetic changes with it.
 
+The server is the ordinary OpenAI-compatible one, so anything that speaks that
+API will do. The shortest way to put a prompt through the emulation is the
+client shipped alongside it, which defaults to `http://localhost:8000/v1`:
+
+```bash
+vllm chat            # --url if the server is not on the default address
+```
+
 The emulation is bit-accurate. Configured to match the GPU it runs on, it
 reproduces the native CUTLASS result exactly:
 
