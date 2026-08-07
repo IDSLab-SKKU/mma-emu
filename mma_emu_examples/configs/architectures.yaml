@@ -1,0 +1,17 @@
+# What each architecture's accumulation does to task accuracy.
+#
+# `arch` resolves through ARCH_ACCUMULATION in
+# tests/kernels/quantization/mma_emu_arch.py, so the paper's table is stated
+# once and read here rather than copied.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: gsm8k
+limit: 200
+num_fewshot: 5
+server_args: --max-model-len 4096
+
+runs:
+  # The baseline the emulation is supposed to reproduce. Named explicitly:
+  # left at auto, FlashInfer sits ahead of CUTLASS and would take the layer.
+  - name: native (cutlass_scaled_mm)
+    linear_backend: cutlass

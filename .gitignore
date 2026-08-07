@@ -254,3 +254,7 @@ vllm/grpc/vllm_engine_pb2.pyi
 
 # Ignore generated cpu headers 
 csrc/cpu/cpu_attn_dispatch_generated.h
+
+# MMA-Emu measurements. Scores depend on the GPU and the sampled subset, so
+# they belong in a paper or a README rather than in the tree.
+mma_emu_examples/results/

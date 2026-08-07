@@ -1,0 +1,27 @@
+# Where a narrowing accumulator starts to cost accuracy.
+#
+# `sweep` lists the values of one field; everything else is held at `mma_emu`.
+# Add a second field to `sweep` and the two are taken as a product, so keep the
+# lists short — each point is a fresh server and a fresh model load.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: gsm8k_cot
+limit: 200
+num_fewshot: 8
+server_args: --max-model-len 4096
+
+runs:
+  # The baseline the emulation is meant to reproduce. CUTLASS by name, not by
+  # omission: left at auto, FlashInfer sits ahead of it in the FP8 candidate
+  # list and would take the layer. Runs on tensor cores, so it costs minutes
+  # rather than hours.
+  - name: native (cutlass_scaled_mm)
+    linear_backend: cutlass
+
+  - name: "CoFDA F={f_bits} CS=32"
+    linear_backend: mma_emu
+    mma_emu:
+      algorithm: cofda
+      chunk_size: 32
+    sweep:
+      f_bits: [25]
