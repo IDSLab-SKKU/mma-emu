@@ -21,6 +21,7 @@ import pytest
 import torch
 
 from tests.kernels.quantization.nvfp4_utils import quant_nvfp4_tensor
+from tests.kernels.utils import opcheck
 from vllm import _custom_ops as ops
 from vllm.platforms import current_platform
 
@@ -91,23 +92,35 @@ def arch_config(fmt: str) -> Config:
     return ARCH_ACCUMULATION[SM][fmt]
 
 
-# M covers a single token, an odd count that exercises the tile bounds checks,
-# and larger batches. N and K stay 16-aligned for FP8 and 32-aligned for NVFP4.
+# Taken from test_cutlass_scaled_mm.py, so the emulation is exercised over the
+# same shapes as the kernel it has to reproduce. M covers a single token, counts
+# that are not multiples of the tile (33, 100), and batches up to 512; K includes
+# 496, which is 16- but not 32-aligned.
 FP8_MNK = [
     (1, 256, 128),
-    (7, 512, 256),
-    (16, 256, 512),
-    (64, 1024, 256),
-    (128, 256, 1024),
-    (256, 512, 512),
+    (1, 16384, 1024),
+    (1, 24576, 496),
+    (16, 256, 496),
+    (16, 16384, 128),
+    (16, 24576, 4096),
+    (32, 8192, 4096),
+    (32, 16384, 4096),
+    (33, 1024, 1024),
+    (33, 8192, 128),
+    (64, 2048, 496),
+    (64, 16384, 1024),
+    (100, 8192, 496),
+    (128, 32768, 4096),
+    (256, 4096, 4096),
+    (512, 256, 1024),
+    (512, 8192, 4096),
+    (512, 16384, 128),
+    (512, 24576, 128),
 ]
 
-NVFP4_MNK = [
-    (16, 256, 512),
-    (64, 512, 256),
-    (128, 256, 1024),
-    (256, 512, 512),
-]
+# NVFP4 packs two elements per byte and scales blocks of 16, so the kernel
+# requires N and K to be multiples of 32. That drops the 496 entries above.
+NVFP4_MNK = [mnk for mnk in FP8_MNK if mnk[1] % 32 == 0 and mnk[2] % 32 == 0]
 
 OUT_DTYPES = [torch.bfloat16, torch.float16]
 
@@ -254,214 +267,126 @@ def test_fp8_rejects_bad_config_at_the_operator(m: int, n: int, k: int):
 
 
 # ============================================================================
-# Grouped MoE
+# Operator schema
+# ============================================================================
+
+
+def test_fp8_opcheck():
+    """The schema was written by hand; opcheck confirms it matches behaviour."""
+    config = arch_config("fp8")
+    a, b, scale_a, scale_b = fp8_inputs(64, 256, 512, seed=0)
+    out = torch.empty((64, 256), dtype=torch.bfloat16, device="cuda")
+    opcheck(
+        torch.ops._C.mma_emu_scaled_fp8_mm,
+        (
+            out,
+            a,
+            b,
+            scale_a,
+            scale_b,
+            None,
+            config["algorithm"],
+            config["f_bits"],
+            config["g_bits"],
+            config["group_size"],
+            config["chunk_size"],
+        ),
+    )
+
+
+# mma_emu_config_error is not opchecked: it takes no tensor and returns a
+# string, which opcheck compares with assert_close.
+
+
+@pytest.mark.skipif(
+    not current_platform.has_device_capability(100),
+    reason="NVFP4 requires compute capability >= 10.0",
+)
+def test_nvfp4_opcheck():
+    config = arch_config("nvfp4")
+    g = torch.Generator(device="cuda").manual_seed(0)
+
+    def rand(rows):
+        return (
+            torch.randn(rows, 512, generator=g, device="cuda", dtype=torch.bfloat16)
+            * 0.3
+        )
+
+    a_ref, b_ref = rand(64), rand(256)
+    a, a_sf, a_gs = quant_nvfp4_tensor(a_ref)
+    b, b_sf, b_gs = quant_nvfp4_tensor(b_ref)
+    alpha = (1.0 / (a_gs * b_gs)).to(torch.float32).reshape(1)
+    out = torch.empty((64, 256), dtype=torch.bfloat16, device="cuda")
+    opcheck(
+        torch.ops._C.mma_emu_scaled_nvfp4_mm,
+        (
+            out,
+            a,
+            b,
+            a_sf,
+            b_sf,
+            alpha,
+            config["algorithm"],
+            config["f_bits"],
+            config["g_bits"],
+        ),
+    )
+
+
+# ============================================================================
+# Tile boundaries
+# ============================================================================
+
+
+@pytest.mark.parametrize("use_bias", [False, True])
+def test_fp8_m_sweep(use_bias: bool):
+    """Every M from 1 to 128, to catch a tile-boundary case the shape list
+    happens to step over."""
+    config = arch_config("fp8")
+    for nk in range(32, 128, 32):
+        for m in range(1, 128):
+            a, b, scale_a, scale_b = fp8_inputs(m, nk, nk, seed=m)
+            bias = (
+                torch.randn(nk, device="cuda", dtype=torch.bfloat16)
+                if use_bias
+                else None
+            )
+            native = ops.cutlass_scaled_mm(a, b, scale_a, scale_b, torch.bfloat16, bias)
+            emulated = ops.mma_emu_scaled_fp8_mm(
+                a, b, scale_a, scale_b, torch.bfloat16, bias, **config
+            )
+            if not torch.equal(native, emulated):
+                diff = (native.float() - emulated.float()).abs()
+                pytest.fail(f"M={m} N=K={nk} bias={use_bias}: max|d|={diff.max():.3e}")
+
+
+# ============================================================================
+# Layout
 # ============================================================================
 #
-# The MoE kernel is built for SM90 only: cutlass_moe_mm has SM90 and SM100
-# implementations and no SM120 one, so Hopper is where the emulation can be
-# compared against a native result at all. These tests have never been run —
-# they were written on a machine that cannot build the kernel — so treat a
-# failure as a finding rather than assuming the test is right.
-
-MOE_CASES = [
-    # (num_experts, m_per_expert, n, k)
-    (2, 64, 256, 256),
-    (4, 32, 128, 512),
-    (8, 16, 256, 128),
-]
+# The kernels index with a packed stride, so a sliced view would be read as
+# though it were dense. cutlass_scaled_mm has the same limitation but does not
+# say so, returning a wrong product instead; these check that the emulation
+# refuses rather than following it.
 
 
-def make_moe_inputs(num_experts: int, m_per_expert: int, n: int, k: int, seed: int):
-    """Build cutlass_moe_mm's arguments.
-
-    a is [P, K] row-major with the experts concatenated; b holds N * K elements
-    per expert with K contiguous, which is built as [E, N, K] and handed over as
-    its [E, K, N] transpose, the way vLLM does it.
-    """
-    g = torch.Generator(device="cuda").manual_seed(seed)
-    total_rows = num_experts * m_per_expert
-
-    expert_offsets = torch.arange(
-        0, total_rows + 1, m_per_expert, device="cuda", dtype=torch.int64
-    )
-    problem_sizes = torch.zeros((num_experts, 3), device="cuda", dtype=torch.int32)
-    problem_sizes[:, 0] = m_per_expert
-    problem_sizes[:, 1] = n
-    problem_sizes[:, 2] = k
-
-    a = (torch.randn(total_rows, k, generator=g, device="cuda") * 0.3).to(
-        torch.float8_e4m3fn
-    )
-    b = (torch.randn(num_experts, n, k, generator=g, device="cuda") * 0.3).to(
-        torch.float8_e4m3fn
-    )
-    b = b.transpose(1, 2)
-
-    # Per-tensor activation scale, one weight scale per expert.
-    a_scales = torch.full((1, 1), 0.05, device="cuda", dtype=torch.float32)
-    b_scales = torch.full((num_experts, 1), 0.07, device="cuda", dtype=torch.float32)
-
-    ab_strides = torch.full(
-        (num_experts,), a.stride(0), device="cuda", dtype=torch.int64
-    )
-    c_strides = torch.full((num_experts,), n, device="cuda", dtype=torch.int64)
-
-    return dict(
-        a=a,
-        b=b,
-        a_scales=a_scales,
-        b_scales=b_scales,
-        expert_offsets=expert_offsets[:-1],
-        problem_sizes=problem_sizes,
-        ab_strides=ab_strides,
-        c_strides=c_strides,
-        total_rows=total_rows,
-        n=n,
-    )
-
-
-@pytest.mark.skipif(
-    SM != 90,
-    reason=f"the MoE emulation kernel is built for SM90 only, this is SM{SM}",
-)
-@pytest.mark.skipif(
-    not hasattr(torch.ops._C, "mma_emu_moe_mm"),
-    reason="vLLM was not built with the MMA-Emu MoE kernel",
-)
-@pytest.mark.parametrize("num_experts,m_per_expert,n,k", MOE_CASES)
-@pytest.mark.parametrize("out_dtype", OUT_DTYPES)
-def test_moe_matches_native(
-    num_experts: int, m_per_expert: int, n: int, k: int, out_dtype
-):
-    """Grouped MoE emulation at SM90's accumulation must match cutlass_moe_mm.
-
-    CoFDA only; the MoE kernel does not implement GDFS.
-    """
-    config = arch_config("fp8")
-    assert config["algorithm"] == COFDA, (
-        "the MoE kernel is CoFDA only, but ARCH_ACCUMULATION records GDFS for "
-        f"SM{SM}'s FP8 path"
-    )
-
-    inp = make_moe_inputs(num_experts, m_per_expert, n, k, seed=num_experts * 31 + k)
-    shape = (inp["total_rows"], inp["n"])
-
-    native = torch.zeros(shape, device="cuda", dtype=out_dtype)
-    torch.ops._C.cutlass_moe_mm(
-        native,
-        inp["a"],
-        inp["b"],
-        inp["a_scales"],
-        inp["b_scales"],
-        inp["expert_offsets"],
-        inp["problem_sizes"],
-        inp["ab_strides"],
-        inp["ab_strides"],
-        inp["c_strides"],
-        False,
-        False,
-    )
-
-    emulated = torch.zeros(shape, device="cuda", dtype=out_dtype)
-    torch.ops._C.mma_emu_moe_mm(
-        emulated,
-        inp["a"],
-        inp["b"],
-        inp["a_scales"],
-        inp["b_scales"],
-        inp["expert_offsets"],
-        inp["problem_sizes"],
-        inp["ab_strides"],
-        inp["ab_strides"],
-        inp["c_strides"],
-        False,
-        False,
-        config["algorithm"],
-        config["f_bits"],
-        config["chunk_size"],
-    )
-
-    assert_bit_exact(native, emulated, config)
-
-
-@pytest.mark.skipif(
-    SM != 90,
-    reason=f"the MoE emulation kernel is built for SM90 only, this is SM{SM}",
-)
-@pytest.mark.skipif(
-    not hasattr(torch.ops._C, "mma_emu_moe_mm"),
-    reason="vLLM was not built with the MMA-Emu MoE kernel",
-)
-def test_moe_narrower_accumulator_diverges():
-    """A narrow accumulator must change the result.
-
-    Without this, test_moe_matches_native would also pass if the operator
-    silently ignored the configuration and called the native path.
-    """
-    config = arch_config("fp8")
-    inp = make_moe_inputs(4, 32, 128, 512, seed=0)
-    shape = (inp["total_rows"], inp["n"])
-
-    def run(f_bits: int, chunk_size: int) -> torch.Tensor:
-        out = torch.zeros(shape, device="cuda", dtype=torch.bfloat16)
-        torch.ops._C.mma_emu_moe_mm(
-            out,
-            inp["a"],
-            inp["b"],
-            inp["a_scales"],
-            inp["b_scales"],
-            inp["expert_offsets"],
-            inp["problem_sizes"],
-            inp["ab_strides"],
-            inp["ab_strides"],
-            inp["c_strides"],
-            False,
-            False,
-            COFDA,
-            f_bits,
-            chunk_size,
+def test_fp8_rejects_non_contiguous_a():
+    whole = (torch.randn(256, 1024, device="cuda") * 0.3).to(torch.float8_e4m3fn)
+    _, b, scale_a, scale_b = fp8_inputs(128, 256, 512, seed=0)
+    a = whole[0:128, 0:512]
+    assert a.stride(0) != a.size(1)
+    out = torch.empty((128, 256), dtype=torch.bfloat16, device="cuda")
+    with pytest.raises(RuntimeError, match="must be contiguous"):
+        torch.ops._C.mma_emu_scaled_fp8_mm(
+            out, a, b, scale_a, scale_b, None, COFDA, 13, 6, 16, 32
         )
-        return out
-
-    narrow_f, narrow_cs = 7, 16
-    assert not torch.equal(
-        run(config["f_bits"], config["chunk_size"]), run(narrow_f, narrow_cs)
-    ), (
-        f"F={narrow_f} CS={narrow_cs} produced the same result as this "
-        f"architecture's own accumulation, so the configuration is not "
-        f"reaching the kernel"
-    )
 
 
-@pytest.mark.skipif(
-    SM != 90,
-    reason=f"the MoE emulation kernel is built for SM90 only, this is SM{SM}",
-)
-@pytest.mark.skipif(
-    not hasattr(torch.ops._C, "mma_emu_moe_mm"),
-    reason="vLLM was not built with the MMA-Emu MoE kernel",
-)
-def test_moe_rejects_gdfs():
-    """GDFS is not implemented for MoE and must be refused, not approximated."""
-    inp = make_moe_inputs(2, 32, 128, 256, seed=0)
-    out = torch.zeros(
-        (inp["total_rows"], inp["n"]), device="cuda", dtype=torch.bfloat16
-    )
-    with pytest.raises(RuntimeError, match="CoFDA"):
-        torch.ops._C.mma_emu_moe_mm(
-            out,
-            inp["a"],
-            inp["b"],
-            inp["a_scales"],
-            inp["b_scales"],
-            inp["expert_offsets"],
-            inp["problem_sizes"],
-            inp["ab_strides"],
-            inp["ab_strides"],
-            inp["c_strides"],
-            False,
-            False,
-            GDFS,
-            13,
-            32,
+def test_fp8_rejects_non_contiguous_out():
+    a, b, scale_a, scale_b = fp8_inputs(128, 256, 512, seed=0)
+    out = torch.empty((128, 512), dtype=torch.bfloat16, device="cuda")[:, 0:256]
+    assert out.stride(0) != out.size(1)
+    with pytest.raises(RuntimeError, match="must be contiguous"):
+        torch.ops._C.mma_emu_scaled_fp8_mm(
+            out, a, b, scale_a, scale_b, None, COFDA, 13, 6, 16, 32
         )

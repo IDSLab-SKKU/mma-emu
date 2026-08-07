@@ -48,6 +48,13 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
   STD_TORCH_CHECK(a_tensors.stride(1) == 1 && out_tensors.stride(1) == 1,
                   "MMA-Emu moe_mm: a and out must be row-major");
 
+  // The kernel indexes with a packed stride, so a sliced view would be read as
+  // though it were dense. Require the packed layout instead.
+  STD_TORCH_CHECK(a_tensors.stride(0) == a_tensors.size(1),
+                  "MMA-Emu moe_mm: a must be contiguous");
+  STD_TORCH_CHECK(out_tensors.stride(0) == out_tensors.size(1),
+                  "MMA-Emu moe_mm: out must be contiguous");
+
   // The emulation applies one scale per expert in its epilogue, so a per-token
   // or per-output-channel scale vector has nowhere to go.
   STD_TORCH_CHECK(!per_act_token && !per_out_ch,
@@ -78,9 +85,13 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
   if (b_tensors.stride(2) == 1) {
     n = b_tensors.size(1);
     k = b_tensors.size(2);
+    STD_TORCH_CHECK(b_tensors.stride(1) == k,
+                    "MMA-Emu moe_mm: each expert's weight must be contiguous");
   } else if (b_tensors.stride(1) == 1) {
     k = b_tensors.size(1);
     n = b_tensors.size(2);
+    STD_TORCH_CHECK(b_tensors.stride(2) == k,
+                    "MMA-Emu moe_mm: each expert's weight must be contiguous");
   } else {
     STD_TORCH_CHECK(false,
                     "MMA-Emu moe_mm: b must have a contiguous K dimension");
@@ -91,6 +102,8 @@ void mma_emu_moe_mm(torch::stable::Tensor& out_tensors,
                   "MMA-Emu moe_mm: a and b disagree on K");
   STD_TORCH_CHECK(out_tensors.size(0) == total_rows && out_tensors.size(1) == n,
                   "MMA-Emu moe_mm: out must be [", total_rows, ", ", n, "]");
+  STD_TORCH_CHECK(b_tensors.stride(0) == n * k,
+                  "MMA-Emu moe_mm: expert weights must be packed back to back");
   STD_TORCH_CHECK(b_scales.numel() == num_experts,
                   "MMA-Emu moe_mm: b_scales must have one entry per expert");
   STD_TORCH_CHECK(expert_offsets.numel() >= num_experts,

@@ -28,6 +28,16 @@ void mma_emu_scaled_fp8_mm(torch::stable::Tensor& out,
   STD_TORCH_CHECK(a.stride(1) == 1 && out.stride(1) == 1);  // Row-major
   STD_TORCH_CHECK(b.stride(0) == 1);                        // Column-major
 
+  // The kernel indexes with a packed stride, so a sliced or padded view would
+  // be read as though it were dense, silently returning the wrong product
+  // rather than failing. Require the packed layout instead.
+  STD_TORCH_CHECK(a.stride(0) == a.size(1),
+                  "MMA-Emu scaled_fp8_mm: a must be contiguous");
+  STD_TORCH_CHECK(out.stride(0) == out.size(1),
+                  "MMA-Emu scaled_fp8_mm: out must be contiguous");
+  STD_TORCH_CHECK(b.stride(1) == b.size(0),
+                  "MMA-Emu scaled_fp8_mm: b must be contiguous");
+
   STD_TORCH_CHECK(a.scalar_type() == torch::headeronly::ScalarType::Float8_e4m3fn);
   STD_TORCH_CHECK(b.scalar_type() == torch::headeronly::ScalarType::Float8_e4m3fn);
 
