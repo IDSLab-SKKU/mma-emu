@@ -121,9 +121,36 @@ for f in (7, 13, 21, 25, 35):
 
 ## Building
 
-The emulation kernels run on CUDA cores, so they need no CUTLASS and no
-architecture-specific MMA instruction — only an architecture that supports the
-element type. FP8 needs SM89; NVFP4 needs SM100 and CUDA 12.8.
+### What this version of vLLM asks for
+
+The fork tracks upstream at `43c4bdcae`, which pins:
+
+| | Required | Stated in |
+| --- | --- | --- |
+| Python | 3.10 – 3.14 | `pyproject.toml`, `requires-python = ">=3.10,<3.15"` |
+| PyTorch | **2.13.0**, exactly | `requirements/cuda.txt`, pinned with `==` |
+| torchvision | 0.28.0 | `requirements/cuda.txt` |
+| torchaudio | 2.11.0 | `requirements/cuda.txt` |
+| CUDA | **13.0** | `VLLM_MAIN_CUDA_VERSION` in `vllm/envs.py`; `docker/Dockerfile` builds on 13.0.3 |
+
+CUDA 13.0 needs an NVIDIA driver of at least 580.
+
+Upstream's installation prose still says the binaries default to CUDA 12.9.
+The code disagrees and is newer: `VLLM_MAIN_CUDA_VERSION` is `13.0`,
+`requirements/cuda.txt` pins the `[cu13]` extras, and the Dockerfile builds on
+13.0.3.
+
+**This fork was developed against CUDA 12.9 instead**, because the machine's
+driver predates 580 and torch 2.13.0 has no cu128 build. Everything works
+there, but it is not what upstream targets, and a few workarounds exist only
+because of it — see [Environment caveats](#environment-caveats) and
+[CUDA13_MIGRATION.md](CUDA13_MIGRATION.md).
+
+### The emulation kernels
+
+They run on CUDA cores, so they need no CUTLASS and no architecture-specific
+MMA instruction — only an architecture that supports the element type. FP8
+needs SM89; NVFP4 needs SM100 and CUDA 12.8.
 
 ```bash
 uv venv --python 3.12 .venv
