@@ -169,7 +169,10 @@ uv pip install --python .venv/bin/python \
   --index-url https://download.pytorch.org/whl/cu130
 uv pip install --python .venv/bin/python -r requirements/build/cuda.txt
 uv pip install --python .venv/bin/python -r requirements/cuda.txt
-uv pip install --python .venv/bin/python pytest tblib
+uv pip install --python .venv/bin/python \
+  --extra-index-url https://download.pytorch.org/whl/cu130 \
+  --index-strategy unsafe-best-match \
+  -r requirements/test/cuda.txt
 CMAKE_BUILD_TYPE=Release MAX_JOBS=32 uv pip install --python .venv/bin/python \
   -e . --no-deps --no-build-isolation
 ```
@@ -177,16 +180,25 @@ CMAKE_BUILD_TYPE=Release MAX_JOBS=32 uv pip install --python .venv/bin/python \
 Use `cu130` and not `cu132`, which carries torch 2.13.0 and torchvision 0.28.0
 but no torchaudio 2.11.0.
 
-`requirements/build/cuda.txt` is the build backend — cmake, ninja, setuptools —
-which `--no-build-isolation` needs present already; `requirements/cuda.txt` is
-the runtime set. `pytest` and `tblib` are all the kernel tests need on top of
-it: `tests/conftest.py` wants transformers and Pillow too, but the runtime set
-has already brought those.
+The three requirements files are separate phases, not one list repeated:
 
-Not `requirements/test/cuda.txt`. That is upstream's whole CI matrix, and one
-of its entries — `arctic-inference`, for a suffix-decoding test unrelated to
-anything here — is an sdist whose build requires `torch==2.7.0`, a version the
-cu130 index does not carry. Nothing in it is needed to exercise the emulation.
+| | |
+| --- | --- |
+| `requirements/build/cuda.txt` | the build backend — cmake, ninja, setuptools — which `--no-build-isolation` needs present already |
+| `requirements/cuda.txt` | the runtime set |
+| `requirements/test/cuda.txt` | upstream's test environment: `pytest` and the fixture stack `tests/conftest.py` imports, plus `lm-eval` for task-level evaluation |
+
+Both flags on that last file are load-bearing, and its own header is misleading
+about them: the header records the `uv pip compile` invocation, which used
+`--torch-backend cu130`. Compiling only resolves metadata. Installing also
+*builds* the sdists in the file, and `arctic-inference` is one whose
+`build-system.requires` pins `torch==2.7.0` — a version the cu130 index does
+not carry, so routing torch there starves the build. `--extra-index-url` adds
+that index while leaving PyPI available, and `--index-strategy
+unsafe-best-match` is what lets uv look past the first index that merely has
+*a* torch. Upstream's Dockerfile supplies the second as `ENV
+UV_INDEX_STRATEGY`, which is why its install line appears to need only the
+first.
 
 Nothing on the last line is decoration:
 
@@ -253,7 +265,8 @@ What settles it is the bit-exactness run below.
 
 ## Testing
 
-`pytest` and `tblib`, installed as part of the build above, are all these need.
+`requirements/test/cuda.txt`, installed as part of the build above, carries
+everything these need.
 
 ```bash
 pytest tests/kernels/quantization/test_mma_emu.py \
