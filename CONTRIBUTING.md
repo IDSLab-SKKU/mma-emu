@@ -11,6 +11,14 @@ distance from upstream deliberately so it can follow it; a change here that
 could have been made there makes that harder. See the divergence table in
 [AGENTS.md](AGENTS.md) for what is already modified and why.
 
+**Install the git hooks before your first commit.** They run the same lint
+and type checks CI does, on the files you touched:
+
+```bash
+uv pip install --python .venv/bin/python -r requirements/lint.txt
+.venv/bin/pre-commit install
+```
+
 Two things worth knowing before you start:
 
 - **Build with `tools/build_mma_emu.sh`.** A plain `pip install -e .` will

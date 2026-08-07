@@ -11,7 +11,7 @@ one.
 
 **This is not `vllm-project/vllm`.** Changes to vLLM itself belong upstream.
 Nothing here should be proposed to upstream except the fixes explicitly marked
-as upstream bugs (see [Divergence](#divergence)).
+as upstream bugs (see [Divergence](#2-divergence)).
 
 ---
 
@@ -97,7 +97,10 @@ When adding tests:
 - Python line length 88. Google-style docstrings.
 - Minimize comments; prefer legible code. When a comment is needed, say *why*,
   since the *what* is in the code.
-- Run `pre-commit run --all-files` before proposing a change.
+- Install the git hooks once, with
+  `uv pip install -r requirements/lint.txt && .venv/bin/pre-commit install`, so
+  the lint and type checks run on every commit rather than in CI afterwards.
+  `pre-commit run --all-files` checks everything, not only what you touched.
 
 ## 6. Commit messages
 

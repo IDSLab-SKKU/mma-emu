@@ -136,6 +136,14 @@ uv pip install --python .venv/bin/python -e . --no-deps --no-build-isolation
 tools/build_mma_emu.sh
 ```
 
+If you are going to change anything, install the git hooks too. CI runs the
+same checks, and finding out there is slower than finding out here:
+
+```bash
+uv pip install --python .venv/bin/python -r requirements/lint.txt
+.venv/bin/pre-commit install
+```
+
 **Use `tools/build_mma_emu.sh` rather than `pip install -e .` on its own.**
 The `dependencies` field in `pyproject.toml` is dynamic, so any build that
 resolves dependencies reads `requirements/cuda.txt` and replaces your torch

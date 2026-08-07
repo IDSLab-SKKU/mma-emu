@@ -26,6 +26,7 @@ the other entries come from the paper.
 """
 
 import contextlib
+from typing import NoReturn
 
 import pytest
 import torch
@@ -66,16 +67,24 @@ if not hasattr(torch.ops._C, "mma_emu_scaled_fp8_mm"):
 FLOAT4_MAX, FLOAT8_MAX = 6.0, 448.0
 
 
+def _skip(reason: str) -> NoReturn:
+    """pytest.skip raises, but it is not annotated as such, so a caller that
+    relies on it to narrow a type has to say so."""
+    pytest.skip(reason)
+    raise AssertionError("pytest.skip returned")
+
+
 def arch_config(fmt: str) -> MmaEmuConfig:
     """The configuration this GPU implements, or skip if it is not recorded."""
-    if SM is None or SM not in ARCH_ACCUMULATION:
-        pytest.skip(
+    accumulation = ARCH_ACCUMULATION.get(SM) if SM is not None else None
+    if accumulation is None:
+        _skip(
             f"No accumulation configuration recorded for SM{SM}. Add one to "
             f"ARCH_ACCUMULATION in mma_emu_arch.py to test this architecture."
         )
-    if fmt not in ARCH_ACCUMULATION[SM]:
-        pytest.skip(f"SM{SM} has no {fmt} entry in ARCH_ACCUMULATION.")
-    return ARCH_ACCUMULATION[SM][fmt]
+    if fmt not in accumulation:
+        _skip(f"SM{SM} has no {fmt} entry in ARCH_ACCUMULATION.")
+    return accumulation[fmt]
 
 
 # Taken from test_cutlass_scaled_mm.py, so the emulation is exercised over the

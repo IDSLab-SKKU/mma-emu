@@ -23,11 +23,19 @@ def emulation_config() -> MmaEmuConfig:
     return config.kernel_config.mma_emu if config is not None else MmaEmuConfig()
 
 
-def resolve_algorithm(config: MmaEmuConfig | None = None) -> int | None:
-    """The configured algorithm id, or None if unset."""
+def resolve_algorithm(config: MmaEmuConfig | None = None) -> int:
+    """The configured algorithm id.
+
+    Only called from a kernel's __init__, which runs after can_implement has
+    accepted the layer, so an unset algorithm means that gate was bypassed
+    rather than that the caller should cope with it.
+    """
     config = config if config is not None else emulation_config()
     if config.algorithm is None:
-        return None
+        raise ValueError(
+            "MMA emulation has no algorithm configured, but a kernel was "
+            "constructed anyway; can_implement should have declined first."
+        )
     return ALGORITHMS[config.algorithm]
 
 
