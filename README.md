@@ -113,6 +113,20 @@ Selection is separate from configuration on purpose. `--linear-backend mma_emu`
 is what you ask for once, while the bitwidths describe the architecture being
 emulated and change from run to run over a fixed model.
 
+`--linear-backend` takes any of vLLM's backends, and naming one is how you get
+the baseline the emulation is supposed to reproduce:
+
+```bash
+vllm serve nvidia/Llama-3.1-8B-Instruct-FP8 --linear-backend cutlass
+```
+
+Ask for it explicitly rather than dropping the flag. Leaving it at `auto` does
+not mean CUTLASS: the FP8 candidate list runs MMA-Emu, Marlin, FlashInfer,
+CUTLASS, torch, and the emulation only declines because no algorithm is
+configured. FlashInfer sits ahead of CUTLASS and does not decline, so it takes
+the layer wherever it is installed — and `requirements/cuda.txt` installs it.
+Comparing against `cutlass_scaled_mm` means saying `cutlass`.
+
 Because it is configuration rather than environment, a sweep is a plain loop in
 one process, and each setting reaches the compilation cache key — two runs that
 compute different numbers do not share compiled artifacts:
