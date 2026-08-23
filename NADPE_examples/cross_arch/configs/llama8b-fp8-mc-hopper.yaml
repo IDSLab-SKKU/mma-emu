@@ -1,0 +1,39 @@
+# Hopper's accumulation, emulated. Run this side on the Blackwell machine.
+#
+# Its partner is llama8b-fp8-mc-native.yaml on the H100. Blackwell accumulates
+# FP8 at F=25; asked for F=13 CS=32 it should reproduce an H100 exactly, which
+# is the claim this pair exists to test. Everything else below matches that
+# file, so the accumulation is the only thing left to explain a difference.
+#
+# The accumulation each architecture implements is tabulated in
+# tests/kernels/quantization/mma_emu_arch.py.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+
+# Multiple choice: the answer is scored rather than generated, so each one is a
+# logprob the two sides can be held to bit for bit.
+tasks: [arc_challenge, arc_easy, piqa, winogrande]
+limit: null      # the whole task; --limit overrides, for a smoke test
+
+max_model_len: 16384
+gpu_memory_utilization: 0.70
+
+# One sequence at a time. The running batch decides the shapes the GEMMs see,
+# and this is the setting the paper's numbers were measured under.
+max_num_seqs: 1
+
+# What SM120 picks on its own; named so the H100 side can be held to it too.
+flash_attn_version: 2
+
+# lm-eval's own seeds are stable run to run, but a comparison across two
+# machines is asking for more than that, so they are pinned rather than left.
+seed: 42
+
+# Every answer choice kept, which is what `compare.py` holds the two sides to.
+log_samples: true
+
+# No timestamp in the filename: these results are committed, so the two
+# machines exchange them through git, and there the history is git's.
+timestamped: false
+
+emulation: {algorithm: cofda, f_bits: 13, chunk_size: 32}

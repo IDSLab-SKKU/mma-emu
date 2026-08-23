@@ -1,0 +1,10 @@
+# The same NVFP4 check under prefill.
+
+model: nvidia/Llama-3.1-8B-Instruct-NVFP4
+task: wikitext
+limit: null          # e.g. 10; the test split has 62 documents
+max_model_len: 16384
+max_num_seqs: null   # 1 runs one document at a time
+
+emulation:
+  - mma_emu: {algorithm: gdfs, f_bits: 35, g_bits: 6, group_size: 16}

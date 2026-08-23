@@ -1,0 +1,40 @@
+# The baseline: Hopper's own tensor cores. Run this side on the H100.
+#
+# Its partner is llama8b-fp8-mc-hopper.yaml, which emulates this accumulation
+# on a Blackwell machine. Everything outside the linear layers is pinned to the
+# same thing on both sides, because a difference there would divide the two
+# results just as surely as the accumulation does — and would be the harder of
+# the two to notice.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+
+# Multiple choice: the answer is scored rather than generated, so each one is a
+# logprob the two sides can be held to bit for bit.
+tasks: [arc_challenge, arc_easy, piqa, winogrande]
+limit: null      # the whole task; --limit overrides, for a smoke test
+
+max_model_len: 16384
+gpu_memory_utilization: 0.70
+
+# One sequence at a time. The running batch decides the shapes the GEMMs see,
+# and this is the setting the paper's numbers were measured under.
+max_num_seqs: 1
+
+# Left unset, vLLM picks per architecture — FA3 on SM90, FA2 on SM120 — so the
+# two sides would run different attention and could not agree bit for bit.
+# Named here rather than on the Blackwell side alone, where it is already the
+# default: the config states the invariant instead of relying on it.
+flash_attn_version: 2
+
+# lm-eval's own seeds are stable run to run, but a comparison across two
+# machines is asking for more than that, so they are pinned rather than left.
+seed: 42
+
+# Every answer choice kept, which is what `compare.py` holds the two sides to.
+log_samples: true
+
+# No timestamp in the filename: these results are committed, so the two
+# machines exchange them through git, and there the history is git's.
+timestamped: false
+
+native: true

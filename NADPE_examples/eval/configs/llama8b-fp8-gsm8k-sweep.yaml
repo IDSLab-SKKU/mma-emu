@@ -1,0 +1,22 @@
+# What a narrowing accumulator costs under decode.
+#
+# `sweep` multiplies the fields it lists over `mma_emu`; two fields are a
+# product, so keep the lists short — each point is a fresh model load. Other
+# forms an entry may take:
+#
+#   - mma_emu: {algorithm: cofda, f_bits: 13, chunk_size: 16}   # Ada, one point
+#   - name: "GDFS F={f_bits} G=6"
+#     mma_emu: {algorithm: gdfs, g_bits: 6}
+#     sweep: {f_bits: [7, 21, 35]}
+#
+# Accepted values: design_space.cuh, checked before anything loads.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: gsm8k_cot
+limit: null          # e.g. 200; --limit overrides
+max_num_seqs: null   # 1 runs one question at a time
+
+emulation:
+  - name: "CoFDA F={f_bits} CS=32"
+    mma_emu: {algorithm: cofda, chunk_size: 32}
+    sweep: {f_bits: [7, 13, 21, 25, 35]}

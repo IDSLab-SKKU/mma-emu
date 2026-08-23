@@ -1,0 +1,13 @@
+# The same sweep under prefill, so the pair answers it of decode and of prefill.
+# See the gsm8k_cot file for the other forms an entry may take.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: wikitext
+limit: null          # e.g. 10; the test split has 62 documents
+max_model_len: 16384
+max_num_seqs: null   # 1 runs one document at a time
+
+emulation:
+  - name: "CoFDA F={f_bits} CS=32"
+    mma_emu: {algorithm: cofda, chunk_size: 32}
+    sweep: {f_bits: [7, 13, 21, 25, 35]}

@@ -114,6 +114,31 @@ void cutlass_scaled_fp4_mm(torch::stable::Tensor& D,
                            torch::stable::Tensor const& B_sf,
                            torch::stable::Tensor const& alpha);
 
+  #ifdef VLLM_ENABLE_MMA_EMU_FP8
+void mma_emu_scaled_fp8_mm(torch::stable::Tensor& out,
+                           torch::stable::Tensor const& a,
+                           torch::stable::Tensor const& b,
+                           torch::stable::Tensor const& a_scales,
+                           torch::stable::Tensor const& b_scales,
+                           std::optional<torch::stable::Tensor> const& bias,
+                           int64_t algorithm, int64_t f_bits, int64_t g_bits,
+                           int64_t group_size, int64_t chunk_size);
+
+std::string mma_emu_config_error(int64_t algorithm, int64_t f_bits,
+                                 int64_t g_bits, int64_t group_size,
+                                 int64_t chunk_size, bool is_fp4);
+  #endif
+
+  #ifdef VLLM_ENABLE_MMA_EMU_NVFP4
+void mma_emu_scaled_nvfp4_mm(torch::stable::Tensor& out,
+                             torch::stable::Tensor const& a,
+                             torch::stable::Tensor const& b,
+                             torch::stable::Tensor const& a_sf,
+                             torch::stable::Tensor const& b_sf,
+                             torch::stable::Tensor const& alpha,
+                             int64_t algorithm, int64_t f_bits, int64_t g_bits);
+  #endif
+
 void cutlass_fp4_group_mm(torch::stable::Tensor& output,
                           const torch::stable::Tensor& a,
                           const torch::stable::Tensor& b,

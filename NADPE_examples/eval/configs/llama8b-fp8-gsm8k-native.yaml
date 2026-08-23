@@ -1,0 +1,11 @@
+# The baseline the emulation reproduces. `native` resolves per format:
+# cutlass_scaled_mm here, cutlass_scaled_fp4_mm for an NVFP4 checkpoint.
+# Measured on its own, so an emulation sweep can be re-run without paying for
+# the baseline again.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: gsm8k_cot
+limit: null      # e.g. 200 to sample; --limit overrides
+max_num_seqs: null   # 1 runs one question at a time
+
+native: true

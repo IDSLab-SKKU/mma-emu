@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in this fork behaves incorrectly.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+- type: markdown
+  attributes:
+    value: >
+      Bugs in vLLM itself belong at
+      [vllm-project/vllm](https://github.com/vllm-project/vllm/issues), not here.
+      This tracker is for the emulation: the `mma_emu` kernels, their selection,
+      and their configuration.
+- type: textarea
+  attributes:
+    label: What happened
+    description: What you ran, what you expected, and what you got instead.
+    placeholder: |
+      Command or script:
+      Expected:
+      Actual:
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Accumulation configuration
+    description: The `--kernel-config` or `kernel_config` you passed, verbatim.
+    render: json
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Environment
+    description: |
+      GPU and SM version, driver, CUDA, and the output of:
+      ```sh
+      .venv/bin/python -c "import torch; print(torch.__version__)"
+      ```
+  validations:
+    required: true

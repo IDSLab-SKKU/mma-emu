@@ -1,0 +1,12 @@
+# The same NVFP4 sweep under prefill.
+
+model: nvidia/Llama-3.1-8B-Instruct-NVFP4
+task: wikitext
+limit: null          # e.g. 10; the test split has 62 documents
+max_model_len: 16384
+max_num_seqs: null   # 1 runs one document at a time
+
+emulation:
+  - name: "GDFS F={f_bits} G=6"
+    mma_emu: {algorithm: gdfs, g_bits: 6}
+    sweep: {f_bits: [7, 13, 21, 35]}

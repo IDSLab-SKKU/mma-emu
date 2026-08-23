@@ -1,0 +1,8 @@
+# The NVFP4 baseline: the same `native`, resolving to cutlass_scaled_fp4_mm.
+
+model: nvidia/Llama-3.1-8B-Instruct-NVFP4
+task: gsm8k_cot
+limit: null          # e.g. 200; --limit overrides
+max_num_seqs: null   # 1 runs one question at a time
+
+native: true

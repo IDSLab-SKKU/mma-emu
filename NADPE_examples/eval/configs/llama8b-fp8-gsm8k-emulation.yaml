@@ -1,0 +1,16 @@
+# The accumulation this machine implements. It must score exactly what
+# -native.yaml scored; a difference is a bug, not an experiment.
+#
+#   Ada        {algorithm: cofda, f_bits: 13, chunk_size: 16}
+#   Hopper     {algorithm: cofda, f_bits: 13, chunk_size: 32}
+#   Blackwell  as below
+#
+# The table these come from: tests/kernels/quantization/mma_emu_arch.py
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: gsm8k_cot
+limit: null          # e.g. 200; --limit overrides
+max_num_seqs: null   # 1 runs one question at a time
+
+emulation:
+  - mma_emu: {algorithm: cofda, f_bits: 25, chunk_size: 32}

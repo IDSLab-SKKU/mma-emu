@@ -350,35 +350,14 @@ inline void cutlass_gemm_sm89_fp8_dispatch(torch::stable::Tensor& out,
   STD_TORCH_CHECK(b.scalar_type() ==
                   torch::headeronly::ScalarType::Float8_e4m3fn);
 
-  uint32_t const m = a.size(0);
-  uint32_t const mp2 =
-      std::max(static_cast<uint32_t>(16), next_pow_2(m));  // next power of 2
-
-  if (mp2 <= 16) {
-    // M in [1, 16]
-    return sm89_fp8_config_M16::dispatch<InType, OutType, Epilogue>(
-        out, a, b, std::forward<EpilogueArgs>(args)...);
-  } else if (mp2 <= 32) {
-    // M in (16, 32]
-    return sm89_fp8_config_M32::dispatch<InType, OutType, Epilogue>(
-        out, a, b, std::forward<EpilogueArgs>(args)...);
-  } else if (mp2 <= 64) {
-    // M in (32, 64]
-    return sm89_fp8_config_M64::dispatch<InType, OutType, Epilogue>(
-        out, a, b, std::forward<EpilogueArgs>(args)...);
-  } else if (mp2 <= 128) {
-    // M in (64, 128]
-    return sm89_fp8_config_M128::dispatch<InType, OutType, Epilogue>(
-        out, a, b, std::forward<EpilogueArgs>(args)...);
-  } else if (mp2 <= 256) {
-    // M in (128, 256]
-    return sm89_fp8_config_M256::dispatch<InType, OutType, Epilogue>(
-        out, a, b, std::forward<EpilogueArgs>(args)...);
-  } else {
-    // M in (256, inf)
-    return sm89_fp8_config_default::dispatch<InType, OutType, Epilogue>(
-        out, a, b, std::forward<EpilogueArgs>(args)...);
-  }
+  // FORK: one config for every shape. Below M = 256 upstream splits the K
+  // tile across two warps and sums their partials in fp32, and M in (32, 64]
+  // drops fast accum as well; either way cutlass_scaled_mm is no longer the
+  // accumulation this fork emulates, and it moves with M and N. Only
+  // sm89_fp8_config_default does neither. Costs small-M throughput; the
+  // unselected configs are left in place.
+  return sm89_fp8_config_default::dispatch<InType, OutType, Epilogue>(
+      out, a, b, std::forward<EpilogueArgs>(args)...);
 }
 
 template <typename InType, typename OutType,
@@ -393,8 +372,9 @@ inline void cutlass_gemm_sm89_fp8_batch_invariant_dispatch(
   STD_TORCH_CHECK(b.scalar_type() ==
                   torch::headeronly::ScalarType::Float8_e4m3fn);
 
-  // keep the CUTLASS config independent of M for batch invariance
-  return sm89_fp8_config_M64::dispatch<InType, OutType, Epilogue>(
+  // FORK: the same single config. Upstream kept this path M-independent with
+  // sm89_fp8_config_M64, which does both of the above.
+  return sm89_fp8_config_default::dispatch<InType, OutType, Epilogue>(
       out, a, b, std::forward<EpilogueArgs>(args)...);
 }
 

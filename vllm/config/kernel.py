@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, field_validator
 
+from vllm.config.mma_emu import MmaEmuConfig
 from vllm.config.utils import config, get_hash_factors, hash_factors
 from vllm.logger import init_logger
 
@@ -156,6 +157,7 @@ LinearBackend = Literal[
     "machete",
     "fbgemm",
     "conch",
+    "mma_emu",
     "exllama",
     "emulation",
     "xpu",
@@ -213,6 +215,9 @@ class KernelConfig:
                    running QDQ on activations.
     """
 
+    mma_emu: MmaEmuConfig = Field(default_factory=MmaEmuConfig)
+    """Accumulation configuration for the mma_emu linear backend."""
+
     linear_backend: LinearBackend = "auto"
     """Backend for quantized linear layer GEMM kernels. Available options:
 
@@ -262,9 +267,11 @@ class KernelConfig:
             "enable_jit_warmup",
             "enable_flashinfer_autotune",
             "ir_op_priority",  # handled separately below
+            "mma_emu",  # handled separately below
         }
         factors = get_hash_factors(self, ignored_factors)
         factors["ir_op_priority"] = self.ir_op_priority.compute_hash()
+        factors["mma_emu"] = self.mma_emu.compute_hash()
         return hash_factors(factors)
 
     @field_validator(

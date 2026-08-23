@@ -1,5 +1,5 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
-  - name: Questions
-    url: https://discuss.vllm.ai
-    about: Ask questions and discuss with other vLLM community members
+  - name: Questions about vLLM itself
+    url: https://github.com/vllm-project/vllm/issues
+    about: This fork changes only the accumulation inside quantized linear layers. Anything else is upstream's.

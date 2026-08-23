@@ -1,0 +1,11 @@
+# The accumulation this machine implements in NVFP4 — GDFS rather than CoFDA,
+# and only Blackwell implements the format at all, so there is one value. It
+# must score exactly what -native.yaml scored.
+
+model: nvidia/Llama-3.1-8B-Instruct-NVFP4
+task: gsm8k_cot
+limit: null          # e.g. 200; --limit overrides
+max_num_seqs: null   # 1 runs one question at a time
+
+emulation:
+  - mma_emu: {algorithm: gdfs, f_bits: 35, g_bits: 6, group_size: 16}

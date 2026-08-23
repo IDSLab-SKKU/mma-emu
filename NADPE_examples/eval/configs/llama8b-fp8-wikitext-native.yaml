@@ -1,0 +1,10 @@
+# The baseline under prefill: wikitext is loglikelihood_rolling, so every
+# document is one forward pass and nothing is decoded. `limit` counts documents.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: wikitext
+limit: null          # e.g. 10; the test split has 62 documents
+max_model_len: 16384
+max_num_seqs: null   # 1 runs one document at a time
+
+native: true

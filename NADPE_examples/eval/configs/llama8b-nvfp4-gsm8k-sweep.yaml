@@ -1,0 +1,14 @@
+# What a narrowing NVFP4 accumulator costs under decode.
+#
+# The kernel fixes the group size at 16 here, and G above 6 carries nothing
+# further — E2M1 products are lossless by then — so F is the axis.
+
+model: nvidia/Llama-3.1-8B-Instruct-NVFP4
+task: gsm8k_cot
+limit: null          # e.g. 200; --limit overrides
+max_num_seqs: null   # 1 runs one question at a time
+
+emulation:
+  - name: "GDFS F={f_bits} G=6"
+    mma_emu: {algorithm: gdfs, g_bits: 6}
+    sweep: {f_bits: [7, 13, 21, 35]}

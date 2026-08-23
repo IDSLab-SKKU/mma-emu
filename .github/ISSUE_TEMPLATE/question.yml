@@ -1,0 +1,21 @@
+name: Question
+description: Ask about the emulation, its parameters, or reproducing a result.
+title: "[Question]: "
+labels: ["question"]
+body:
+- type: markdown
+  attributes:
+    value: >
+      Questions about vLLM itself belong at
+      [vllm-project/vllm](https://github.com/vllm-project/vllm), not here.
+- type: textarea
+  attributes:
+    label: Your question
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: What you have already read
+    description: >
+      README, `NADPE_examples/`, or a source file — so the answer can start
+      where you stopped rather than where the documentation does.

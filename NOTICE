@@ -1,0 +1,97 @@
+NADPE
+Copyright 2026 IDSLab, Sungkyunkwan University
+
+This product includes software developed by the vLLM project
+(https://github.com/vllm-project/vllm), licensed under the Apache License,
+Version 2.0.
+
+    Copyright contributors to the vLLM project
+
+--------------------------------------------------------------------------------
+
+Modifications
+=============
+
+This is a modified fork of vLLM, branched from upstream commit 43c4bdcae. It
+adds kernels that emulate MMA accumulation arithmetic on CUDA cores, so that
+the accumulation algorithm and its bitwidths become run-time parameters.
+
+Added, under the Apache License, Version 2.0:
+
+    csrc/libtorch_stable/quantization/mma_emu/
+    NADPE_examples/
+    tests/kernels/quantization/conftest.py
+    tests/kernels/quantization/mma_emu_arch.py
+    tests/kernels/quantization/test_mma_emu.py
+    tests/kernels/quantization/test_mma_emu_selection.py
+    vllm/config/mma_emu.py
+    vllm/model_executor/kernels/linear/mma_emu_config.py
+    vllm/model_executor/kernels/linear/nvfp4/mma_emu.py
+    vllm/model_executor/kernels/linear/scaled_mm/mma_emu.py
+    .github/ISSUE_TEMPLATE/bug-report.yml
+    .github/ISSUE_TEMPLATE/question.yml
+
+Modified from the upstream versions:
+
+    .github/ISSUE_TEMPLATE/config.yml
+    .github/PULL_REQUEST_TEMPLATE.md
+    .github/workflows/pre-commit.yml
+    .gitignore
+    CMakeLists.txt
+    csrc/libtorch_stable/ops.h
+    csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_sm100_fp8_dispatch.cuh
+    csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_sm90_fp8_dispatch.cuh
+    csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_c2x_sm89_fp8_dispatch.cuh
+    csrc/libtorch_stable/torch_bindings.cpp
+    vllm/_custom_ops.py
+    vllm/config/kernel.py
+    vllm/model_executor/kernels/linear/__init__.py
+
+The three FP8 dispatches are pinned rather than rewritten. Each selected a
+CUTLASS configuration by M, and the configurations disagree in their last bits,
+so the native result moved with the shape and could not serve as a baseline for
+an accumulation. The unselected configurations are left in place: this is a
+change of policy, not a deletion.
+
+Replaced, and no longer describing the upstream project:
+
+    AGENTS.md
+    CONTRIBUTING.md
+    README.md
+    SECURITY.md
+
+Removed, being specific to the upstream project's infrastructure, review and
+triage:
+
+    .github/CODEOWNERS
+    .github/dependabot.yml
+    .github/FUNDING.yml
+    .github/ISSUE_TEMPLATE/100-documentation.yml
+    .github/ISSUE_TEMPLATE/200-installation.yml
+    .github/ISSUE_TEMPLATE/300-usage.yml
+    .github/ISSUE_TEMPLATE/400-bug-report.yml
+    .github/ISSUE_TEMPLATE/450-ci-failure.yml
+    .github/ISSUE_TEMPLATE/500-feature-request.yml
+    .github/ISSUE_TEMPLATE/600-new-model.yml
+    .github/ISSUE_TEMPLATE/700-performance-discussion.yml
+    .github/ISSUE_TEMPLATE/750-RFC.yml
+    .github/mergify.yml
+    .github/scale-config.yml
+    .github/workflows/add_label_automerge.yml
+    .github/workflows/issue_autolabel.yml
+    .github/workflows/macos-smoke-test.yml
+    .github/workflows/new_pr_bot.yml
+    .github/workflows/notify-ci-authorized.yml
+    .github/workflows/record-ci-approval.yml
+    .github/workflows/run-ci-command.yml
+    .github/workflows/scripts/create_release.js
+    .github/workflows/scripts/run_ci_command.py
+    .github/workflows/scripts/test_run_ci_command.py
+    .github/workflows/stale.yml
+    .readthedocs.yaml
+
+docs/ and mkdocs.yaml are upstream's documentation, carried unmodified and not
+describing this fork. Only .readthedocs.yaml, which published them, is removed.
+
+The upstream project is not responsible for this fork, and questions about vLLM
+itself should go to https://github.com/vllm-project/vllm.

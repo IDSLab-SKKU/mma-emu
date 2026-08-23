@@ -254,3 +254,12 @@ vllm/grpc/vllm_engine_pb2.pyi
 
 # Ignore generated cpu headers 
 csrc/cpu/cpu_attn_dispatch_generated.h
+
+# MMA-Emu measurements. Scores depend on the GPU and the sampled subset, so
+# they belong in a paper or a README rather than in the tree.
+NADPE_examples/eval/results/
+NADPE_examples/cross_arch/results/
+
+# Design notes written while the work was being planned. Working documents, not
+# something the fork publishes.
+docs/superpowers/

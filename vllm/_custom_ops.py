@@ -804,6 +804,79 @@ def cutlass_scaled_mm(
     return out.view(*target_shape)
 
 
+def mma_emu_scaled_fp8_mm(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    out_dtype: torch.dtype,
+    bias: torch.Tensor | None,
+    *,
+    algorithm: int,
+    f_bits: int,
+    g_bits: int,
+    group_size: int,
+    chunk_size: int,
+) -> torch.Tensor:
+    """
+    `mma_emu_scaled_fp8_mm` computes the same product as `cutlass_scaled_mm`,
+    but on CUDA cores with the MMA accumulation arithmetic under software
+    control, so the accumulation algorithm and its bitwidths become parameters.
+
+    Only per-tensor scales are supported. `algorithm` and the bitwidths are
+    validated by `torch.ops._C.mma_emu_config_error`.
+    """
+    assert out_dtype is torch.bfloat16 or out_dtype is torch.float16
+    assert scale_a.numel() == 1 and scale_b.numel() == 1
+    assert bias is None or bias.numel() == b.shape[1] and bias.dtype == out_dtype
+
+    target_shape = (*a.shape[:-1], b.shape[1])
+    a = a.view(-1, a.shape[-1])
+
+    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
+    torch.ops._C.mma_emu_scaled_fp8_mm(
+        out,
+        a,
+        b,
+        scale_a,
+        scale_b,
+        bias,
+        algorithm,
+        f_bits,
+        g_bits,
+        group_size,
+        chunk_size,
+    )
+    return out.view(*target_shape)
+
+
+def mma_emu_scaled_nvfp4_mm(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    block_scale_a: torch.Tensor,
+    block_scale_b: torch.Tensor,
+    alpha: torch.Tensor,
+    out_dtype: torch.dtype,
+    *,
+    algorithm: int,
+    f_bits: int,
+    g_bits: int,
+) -> torch.Tensor:
+    """
+    `mma_emu_scaled_nvfp4_mm` is to `cutlass_scaled_fp4_mm` what
+    `mma_emu_scaled_fp8_mm` is to `cutlass_scaled_mm`. The chunk and group
+    sizes are fixed at 16 by the kernel, so only F and G are parameters.
+    """
+    assert out_dtype is torch.bfloat16 or out_dtype is torch.float16
+
+    m, n = a.shape[0], b.shape[0]
+    out = torch.empty((m, n), dtype=out_dtype, device=a.device)
+    torch.ops._C.mma_emu_scaled_nvfp4_mm(
+        out, a, b, block_scale_a, block_scale_b, alpha, algorithm, f_bits, g_bits
+    )
+    return out
+
+
 def cutlass_scaled_mm_azp(
     a: torch.Tensor,
     b: torch.Tensor,

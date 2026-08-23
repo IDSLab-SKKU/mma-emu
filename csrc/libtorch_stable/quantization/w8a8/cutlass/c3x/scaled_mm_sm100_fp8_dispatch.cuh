@@ -250,15 +250,19 @@ inline void cutlass_gemm_sm100_fp8_dispatch(
   STD_TORCH_CHECK(b.scalar_type() ==
                   torch::headeronly::ScalarType::Float8_e4m3fn);
 
+  // FORK: no swap-AB config is selected. A swap-AB config hands the epilogue
+  // its scales in the opposite order, so cutlass_scaled_mm rounds
+  // fma(scale_b, scale_a * acc, bias) at or below M = 64 and
+  // fma(scale_a, scale_b * acc, bias) above it, and the same inputs give a
+  // different last bit on either side of the boundary. This fork measures an
+  // emulated accumulation against this kernel, and a reference that moves
+  // with the batch size is not one. The selection below is upstream's own,
+  // from before the swap-AB optimization, with M <= 16 folded into the M64
+  // config; the accumulation is untouched, and the unselected configs are
+  // left where they are.
   using Cutlass3xGemmDefault =
       typename sm100_fp8_config_default<InType, OutType,
                                         EnableBias>::Cutlass3xGemm;
-  using Cutlass3xGemmM16SwapAB =
-      typename sm100_fp8_config_M16_swap_ab<InType, OutType,
-                                            EnableBias>::Cutlass3xGemm;
-  using Cutlass3xGemmM64SwapAB =
-      typename sm100_fp8_config_M64_swap_ab<InType, OutType,
-                                            EnableBias>::Cutlass3xGemm;
   using Cutlass3xGemmM64 =
       typename sm100_fp8_config_M64<InType, OutType, EnableBias>::Cutlass3xGemm;
 
@@ -267,22 +271,11 @@ inline void cutlass_gemm_sm100_fp8_dispatch(
                                      EnableBias>::Cutlass3xGemm;
 
   uint32_t const m = a.size(0);
-  uint32_t const k = a.size(1);
 
-  if (m <= 16) {
-    // m in [1, 16]
-    return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM16SwapAB>(
-        out, a, b, b_scales, a_scales, std::forward<EpilogueArgs>(args)...);
-  } else if (m <= 64) {
-    // m in (16, 64]
-    if (m == 64 && k < 4096) {
-      // do not enable swap AB
-      return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM64>(
-          out, a, b, a_scales, b_scales, std::forward<EpilogueArgs>(args)...);
-    }
-    return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM64SwapAB>(
-        out, a, b, b_scales, a_scales, std::forward<EpilogueArgs>(args)...);
-
+  if (m <= 64) {
+    // m in [1, 64]
+    return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM64>(
+        out, a, b, a_scales, b_scales, std::forward<EpilogueArgs>(args)...);
   } else if (m <= 256) {
     // m in (64, 256]
     return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM256>(
@@ -306,20 +299,14 @@ inline void cutlass_gemm_sm100_fp8_batch_invariant_dispatch(
   STD_TORCH_CHECK(b.scalar_type() ==
                   torch::headeronly::ScalarType::Float8_e4m3fn);
 
-  using Cutlass3xGemmM64SwapAB =
-      typename sm100_fp8_config_M64_swap_ab<InType, OutType,
-                                            EnableBias>::Cutlass3xGemm;
+  // FORK: the same non-swap config at every shape. Upstream already kept this
+  // path independent of M, but picked the swap-AB config for K >= 4096, which
+  // makes the scale order depend on K instead. Now both dispatches agree.
   using Cutlass3xGemmM64 =
       typename sm100_fp8_config_M64<InType, OutType, EnableBias>::Cutlass3xGemm;
 
-  // keep the CUTLASS config independent of M for batch invariance
-  uint32_t const k = a.size(1);
-  if (k < 4096) {
-    return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM64>(
-        out, a, b, a_scales, b_scales, std::forward<EpilogueArgs>(args)...);
-  }
-  return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM64SwapAB>(
-      out, a, b, b_scales, a_scales, std::forward<EpilogueArgs>(args)...);
+  return cutlass_gemm_caller_sm100_fp8<Cutlass3xGemmM64>(
+      out, a, b, a_scales, b_scales, std::forward<EpilogueArgs>(args)...);
 }
 
 template <bool EnableBias, typename... EpilogueArgs>

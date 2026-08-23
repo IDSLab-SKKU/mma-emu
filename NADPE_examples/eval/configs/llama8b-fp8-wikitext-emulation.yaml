@@ -1,0 +1,11 @@
+# The same check under prefill: this machine's accumulation must score exactly
+# what -native.yaml scored. See the gsm8k_cot file for the other parts' values.
+
+model: nvidia/Llama-3.1-8B-Instruct-FP8
+task: wikitext
+limit: null          # e.g. 10; the test split has 62 documents
+max_model_len: 16384
+max_num_seqs: null   # 1 runs one document at a time
+
+emulation:
+  - mma_emu: {algorithm: cofda, f_bits: 25, chunk_size: 32}

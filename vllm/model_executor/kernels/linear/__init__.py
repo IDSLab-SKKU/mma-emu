@@ -148,6 +148,9 @@ from vllm.model_executor.kernels.linear.nvfp4.humming import (
 from vllm.model_executor.kernels.linear.nvfp4.marlin import (
     MarlinNvFp4LinearKernel,
 )
+from vllm.model_executor.kernels.linear.nvfp4.mma_emu import (
+    MmaEmuNvFp4LinearKernel,
+)
 from vllm.model_executor.kernels.linear.scaled_mm import (
     Fp8BlockScaledMMLinearKernel,
     FP8ScaledMMLinearKernel,
@@ -185,6 +188,9 @@ from vllm.model_executor.kernels.linear.scaled_mm.humming import (
 )
 from vllm.model_executor.kernels.linear.scaled_mm.marlin import (
     MarlinFP8ScaledMMLinearKernel,
+)
+from vllm.model_executor.kernels.linear.scaled_mm.mma_emu import (
+    MmaEmuFP8ScaledMMLinearKernel,
 )
 from vllm.model_executor.kernels.linear.scaled_mm.pytorch import (
     ChannelWiseTorchFP8ScaledMMLinearKernel,
@@ -298,6 +304,10 @@ _LINEAR_BACKEND_KERNEL_MAP: dict[str, set[type]] = {
     "conch": {
         ConchLinearKernel,
     },
+    "mma_emu": {
+        MmaEmuFP8ScaledMMLinearKernel,
+        MmaEmuNvFp4LinearKernel,
+    },
     "exllama": {
         ExllamaLinearKernel,
     },
@@ -340,6 +350,9 @@ _POSSIBLE_INT8_KERNELS: dict[PlatformEnum, list[type[Int8ScaledMMLinearKernel]]]
 # in priority/performance order (when available)
 _POSSIBLE_FP8_KERNELS: dict[PlatformEnum, list[type[FP8ScaledMMLinearKernel]]] = {
     PlatformEnum.CUDA: [
+        # Declines every layer unless an accumulation algorithm is configured, so
+        # only takes precedence when emulation was asked for.
+        MmaEmuFP8ScaledMMLinearKernel,
         MarlinFP8ScaledMMLinearKernel,
         FlashInferFP8ScaledMMLinearKernel,
         CutlassFP8ScaledMMLinearKernel,
@@ -463,6 +476,8 @@ _POSSIBLE_MXFP8_KERNELS: dict[PlatformEnum, list[type[Mxfp8LinearKernel]]] = {
 
 _POSSIBLE_NVFP4_KERNELS: dict[PlatformEnum, list[type[NvFp4LinearKernel]]] = {
     PlatformEnum.CUDA: [
+        # Declines every layer unless an accumulation algorithm is configured.
+        MmaEmuNvFp4LinearKernel,
         FlashInferCuteDslNvFp4LinearKernel,
         # FlashInferB12xNvFp4LinearKernel excluded from auto-selection until
         # upstream CUTLASS SM121 MMA op guard is resolved; use
@@ -984,10 +999,11 @@ def init_nvfp4_linear_kernel(use_a16: bool = False) -> NvFp4LinearKernel:
 
     # VLLM_BATCH_INVARIANT forces deterministic execution. Prefer the
     # batch-invariant CUTLASS implementation when available, otherwise fall
-    # back to emulation. It overrides --linear-backend.
+    # back to emulation. It overrides --linear-backend, except for mma_emu,
+    # which dispatches nothing on M and so is already invariant.
     force_kernel: type[NvFp4LinearKernel] | None = None
     linear_backend = _get_linear_backend()
-    if envs.VLLM_BATCH_INVARIANT:
+    if envs.VLLM_BATCH_INVARIANT and linear_backend != "mma_emu":
         bi_supported, reason = CutlassNvFp4LinearKernel.is_supported()
         if bi_supported:
             if linear_backend not in ("auto", "cutlass"):
@@ -1155,6 +1171,8 @@ __all__ = [
     "AiterInt8ScaledMMLinearKernel",
     "CPUInt8ScaledMMLinearKernel",
     "CutlassFP8ScaledMMLinearKernel",
+    "MmaEmuFP8ScaledMMLinearKernel",
+    "MmaEmuNvFp4LinearKernel",
     "CutlassInt8ScaledMMLinearKernel",
     "FlashInferFP8ScaledMMLinearKernel",
     "ChannelWiseTorchFP8ScaledMMLinearKernel",

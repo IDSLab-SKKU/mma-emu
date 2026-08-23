@@ -427,17 +427,17 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     "csrc/libtorch_stable/fused_deepseek_v4_qnorm_rope_kv_insert_kernel.cu"
     "csrc/libtorch_stable/fused_kimi_k3_mla_key_concat_kv_cache_kernel.cu")
 
+  # Requires CUDA >= 13.0. csrc/libtorch_stable/cooperative_topk.cuh calls
+  # cuda::ptx::mbarrier_try_wait_parity, cuda::ptx::mbarrier_arrive_expect_tx
+  # and cuda::ptx::cp_async_bulk through their sem_relaxed overloads, which the
+  # CUDA 12.x libcu++ does not provide, so enabling this on CUDA 12.x fails to
+  # compile for every architecture.
   if(VLLM_GPU_LANG STREQUAL "CUDA" AND
      DEFINED CMAKE_CUDA_COMPILER_VERSION AND
-     CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.0)
+     CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
 
-    if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 13.0)
-      cuda_archs_loose_intersection(COOPERATIVE_TOPK_ARCHS
-        "9.0a;10.0f;10.1f;10.3f;10.7f;11.0f;12.0f;12.1f" "${CUDA_ARCHS}")
-    else()
-      cuda_archs_loose_intersection(COOPERATIVE_TOPK_ARCHS
-        "9.0a;10.0a;10.1a;10.3a;12.0a;12.1a" "${CUDA_ARCHS}")
-    endif()
+    cuda_archs_loose_intersection(COOPERATIVE_TOPK_ARCHS
+      "9.0a;10.0f;10.1f;10.3f;10.7f;11.0f;12.0f;12.1f" "${CUDA_ARCHS}")
 
     if(COOPERATIVE_TOPK_ARCHS)
       list(APPEND VLLM_GPU_FLAGS "-DVLLM_ENABLE_COOPERATIVE_TOPK=1")
@@ -824,6 +824,44 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     endif()
   endif()
 
+  #
+  # MMA-Emu accumulation emulation kernels.
+  #
+  # These run on CUDA cores rather than tensor cores, so they need no CUTLASS
+  # and no architecture-specific MMA instruction — only an architecture that
+  # supports the element type. FP8 E4M3 arrives with SM89; the NVFP4 packed
+  # types need CUDA 12.8 and SM100.
+  #
+  cuda_archs_loose_intersection(MMA_EMU_FP8_ARCHS
+    "8.9;9.0;10.0;12.0" "${CUDA_ARCHS}")
+  if(MMA_EMU_FP8_ARCHS)
+    set(MMA_EMU_FP8_SRCS
+      "csrc/libtorch_stable/quantization/mma_emu/mma_emu_scaled_fp8_mm_entry.cu")
+    set_gencode_flags_for_srcs(
+      SRCS "${MMA_EMU_FP8_SRCS}"
+      CUDA_ARCHS "${MMA_EMU_FP8_ARCHS}")
+    list(APPEND VLLM_STABLE_EXT_SRC "${MMA_EMU_FP8_SRCS}")
+    message(STATUS "Building mma_emu_scaled_fp8_mm for archs: ${MMA_EMU_FP8_ARCHS}")
+  else()
+    message(STATUS "Not building mma_emu_scaled_fp8_mm as no compatible archs "
+                   "found in CUDA target architectures")
+  endif()
+
+  cuda_archs_loose_intersection(MMA_EMU_NVFP4_ARCHS "10.0;12.0" "${CUDA_ARCHS}")
+  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND MMA_EMU_NVFP4_ARCHS)
+    set(MMA_EMU_NVFP4_SRCS
+      "csrc/libtorch_stable/quantization/mma_emu/mma_emu_scaled_nvfp4_mm_entry.cu")
+    set_gencode_flags_for_srcs(
+      SRCS "${MMA_EMU_NVFP4_SRCS}"
+      CUDA_ARCHS "${MMA_EMU_NVFP4_ARCHS}")
+    list(APPEND VLLM_STABLE_EXT_SRC "${MMA_EMU_NVFP4_SRCS}")
+    message(STATUS "Building mma_emu_scaled_nvfp4_mm for archs: ${MMA_EMU_NVFP4_ARCHS}")
+  else()
+    set(MMA_EMU_NVFP4_ARCHS)
+    message(STATUS "Not building mma_emu_scaled_nvfp4_mm as it needs CUDA >= 12.8 "
+                   "and a compatible arch")
+  endif()
+
 
   # The cutlass_scaled_mm kernels for Blackwell SM100 (c3x, i.e. CUTLASS 3.x)
   # require CUDA 12.8 or later
@@ -1165,6 +1203,14 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     if(KIMI_K3_ATTN_RES_ARCHS)
       target_compile_definitions(_C_stable_libtorch PRIVATE
         VLLM_ENABLE_KIMI_K3_ATTN_RES=1)
+    endif()
+    if(MMA_EMU_FP8_ARCHS)
+      target_compile_definitions(_C_stable_libtorch PRIVATE
+        VLLM_ENABLE_MMA_EMU_FP8=1)
+    endif()
+    if(MMA_EMU_NVFP4_ARCHS)
+      target_compile_definitions(_C_stable_libtorch PRIVATE
+        VLLM_ENABLE_MMA_EMU_NVFP4=1)
     endif()
     # Needed by CUTLASS kernels
     target_compile_definitions(_C_stable_libtorch PRIVATE

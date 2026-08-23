@@ -1,135 +1,129 @@
-# Agent Instructions for vLLM
+# Agent Instructions for NADPE
 
-> These instructions apply to **all** AI-assisted contributions to `vllm-project/vllm`.
-> Breaching these guidelines can result in automatic banning.
+> These instructions apply to **all** AI-assisted contributions to
+> `IDSLab-SKKU/NADPE`.
 
-## 1. Contribution Policy (Mandatory)
+This is a research fork of [vLLM](https://github.com/vllm-project/vllm) that
+emulates MMA accumulation arithmetic on CUDA cores. Read [README.md](README.md)
+first — it explains what the fork adds and, importantly, the environment
+constraints that make the difference between a working install and a confusing
+one.
 
-### Duplicate-work checks
-
-Before proposing a PR, run these checks:
-
-```bash
-gh issue view <issue_number> --repo vllm-project/vllm --comments
-gh pr list --repo vllm-project/vllm --state open --search "<issue_number> in:body"
-gh pr list --repo vllm-project/vllm --state open --search "<short area keywords>"
-```
-
-- If an open PR already addresses the same fix, do not open another.
-- If your approach is materially different, explain the difference in the issue.
-
-### No low-value busywork PRs
-
-Do not open one-off PRs for tiny edits (single typo, isolated style change, one mutable default, etc.). Mechanical cleanups are acceptable only when bundled with substantive work.
-
-### Accountability
-
-- Pure code-agent PRs are **not allowed**. A human submitter must understand and defend the change end-to-end.
-- The submitting human must review every changed line and run relevant tests.
-- PR descriptions for AI-assisted work **must** include:
-    - Why this is not duplicating an existing PR.
-    - Test commands run and results.
-    - Model evaluation results when the change affects output, accuracy, or serving.
-    - Clear statement that AI assistance was used.
-
-### Fail-closed behavior
-
-If work is duplicate/trivial busywork, **do not proceed**. Return a short explanation of what is missing.
+**This is not `vllm-project/vllm`.** Changes to vLLM itself belong upstream.
+Nothing here should be proposed to upstream except the fixes explicitly marked
+as upstream bugs (see [Divergence](#2-divergence)).
 
 ---
 
-## 2. Development Workflow
+## 1. Environment
 
-- **Never use system `python3` or bare `pip`/`pip install`.** All Python commands must go through `uv` and `.venv/bin/python`.
+**Never use system `python3` or bare `pip`/`pip install`.** All Python commands
+go through `uv` and `.venv/bin/python`.
 
-### Environment setup
+Follow the build instructions in [README.md](README.md). One point bites hard
+enough to repeat:
+
+- **Never install without `--no-deps`.** The `dependencies` field in
+  `pyproject.toml` is dynamic, so a dependency-resolving build replaces torch
+  with a different CUDA build and silently breaks the environment. The build is
+  `uv pip install -e . --no-deps --no-build-isolation`, with `MAX_JOBS` to cap
+  the job count and `CMAKE_BUILD_TYPE=Release` because the fallback is
+  `RelWithDebInfo`. Rebuild with `setup.py build_ext --inplace` rather than
+  reinstalling, and keep that environment identical between runs or CMake
+  reconfigures.
+
+## 2. Divergence
+
+The value of this fork is that it stays close to upstream, so it can follow it.
+Guard that.
+
+**Prefer new files over edits to existing ones.** The emulation lives in
+`csrc/libtorch_stable/quantization/mma_emu/` and in `mma_emu.py` modules under
+`vllm/model_executor/kernels/linear/`. A new file carries no rebase risk. The
+registration touchpoints are most of the divergence, and there are currently
+six:
+
+| File | Why |
+| --- | --- |
+| `CMakeLists.txt` | Adds the sources; also gates cooperative topk on CUDA ≥ 13 |
+| `csrc/libtorch_stable/torch_bindings.cpp` | Operator schemas and implementations |
+| `csrc/libtorch_stable/ops.h` | Operator declarations |
+| `vllm/config/kernel.py` | `mma_emu` sub-config, and `mma_emu` in the `LinearBackend` literal |
+| `vllm/_custom_ops.py` | Python wrappers |
+| `vllm/model_executor/kernels/linear/__init__.py` | Kernel registration |
+
+Three more upstream files diverge for a different reason. The FP8 dispatches
+for SM89 (`scaled_mm_c2x_sm89_fp8_dispatch.cuh`), SM90 and SM100
+(`c3x/scaled_mm_sm{90,100}_fp8_dispatch.cuh`) select a CUTLASS config by M, and
+the configs disagree in their last bits, so `cutlass_scaled_mm` is not a fixed
+baseline to measure an accumulation against. Each is pinned to a config that
+accumulates the way the emulation does. The unselected configs are left in
+place: this is a change of policy, not a deletion, and a rebase should see it as
+one.
+
+The cooperative topk change in `CMakeLists.txt` is an **upstream bug**, not a
+fork-local need: the guard admits CUDA ≥ 12.0 while the source requires the
+CUDA 13 CCCL, so an unmodified tree cannot build on CUDA 12.x. It is written in
+upstream's own idiom so it can be submitted as-is.
+
+Two more upstream files diverge outside those tables.
+`.github/workflows/pre-commit.yml` runs on `ubuntu-latest` rather than
+`[self-hosted, linux, x64, vllm-runners]`, and drops the `pre-run-check` job
+gating on PR labels and an author's merged-PR count. This fork has neither those
+runners nor that triage process, so a rebase that restores either leaves CI
+queued against a machine that does not exist — silently, since nothing fails.
+`.gitignore` adds the results directories and the design notes; it only appends,
+so it conflicts rarely.
+
+**Keep upstream-file edits in their own commits**, separate from additions, so a
+future rebase is a replay of a short labelled series rather than archaeology.
+
+## 3. Single source of truth
+
+`csrc/libtorch_stable/quantization/mma_emu/design_space.cuh` states which `F`,
+`G`, `CS` and `GS` values the kernels accept. Nothing else restates them —
+`mma_emu_config_check.h` phrases the rejection, the operator entry points use it
+as a backstop, and Python reaches the same function through
+`torch.ops._C.mma_emu_config_error`.
+
+If you add a parameter, decide first whether it is a **value** (a shift amount
+or a mask — make it a kernel argument, bounded by a range) or a **shape** (an
+array extent or a type — it must stay a template parameter, enumerated). That
+distinction is why there are twelve kernel instantiations rather than hundreds.
+
+## 4. Tests
 
 ```bash
-# Install `uv` if you don't have it already:
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Always use `uv` for Python environment management:
-uv venv --python 3.12
-source .venv/bin/activate
-
-# Always make sure `pre-commit` and its hooks are installed:
-uv pip install -r requirements/lint.txt
-pre-commit install
+pytest tests/kernels/quantization/test_mma_emu.py
 ```
 
-### Installing dependencies
-
-```bash
-# If you are only making Python changes:
-VLLM_USE_PRECOMPILED=1 uv pip install -e . --torch-backend=auto
-
-# If you are also making C/C++ changes:
-uv pip install -e . --torch-backend=auto
-```
-
-### Tests
-
-> Requires [Environment setup](#environment-setup) and [Installing dependencies](#installing-dependencies).
-
-```bash
-# Install test dependencies (use cuda.in on non-x86_64):
-uv pip install -r requirements/test/cuda.in
-
-# Run a specific test file:
-.venv/bin/python -m pytest tests/path/to/test_file.py -v
-```
+The bit-exactness tests need a GPU, so CI lints only. Run them locally before
+proposing a change to the kernels.
 
 When adding tests:
 
-- **Design before you write.** Answer four questions first: what is the module
-  for, what is its I/O contract, what failure am I guarding against, and what is
-  the cheapest level that catches it (unit over integration over e2e)?
-- **Reuse before create.** Extend existing test files, `conftest.py` fixtures, and
-  helpers; add a new file only when no nearby suite fits.
-- **Test behavior with intent.** Assert observable outcomes through public APIs;
-  state why in the name or docstring. Skip trivial wiring; flaky tests are worse
-  than no tests.
-- **Keep it minimal.** One behavior per test and the smallest setup that
-  triggers it; if the test diff dwarfs the code change, cut scope.
-- **No one-off kernel benchmarks in `tests/`.** Put kernel perf work in
-  `benchmarks/kernels/`; prove correctness in existing pytest suites.
-- **Run model evals for model-affecting changes.** Search `tests/evals/` or use
-  `vllm bench` and include results in the PR — do not wait for reviewers to ask.
+- **Test against the native path.** The emulation configured to match the GPU
+  should reproduce `cutlass_scaled_mm` or `cutlass_scaled_fp4_mm` exactly. A
+  test that only checks the emulation against itself proves little.
+- **Make failures diagnostic.** Report how many elements differ and by how much,
+  not just that they do.
+- Extend `FP8_MNK` / `NVFP4_MNK` rather than writing a new sweep.
 
-For model-specific requirements, see
-[`docs/contributing/model/tests.md`](docs/contributing/model/tests.md).
+## 5. Style
 
-### Running linters
+- Match the surrounding code, which is vLLM's.
+- Python line length 88. Google-style docstrings.
+- Minimize comments; prefer legible code. When a comment is needed, say *why*,
+  since the *what* is in the code.
+- Install the git hooks once, with
+  `uv pip install -r requirements/lint.txt && .venv/bin/pre-commit install`, so
+  the lint and type checks run on every commit rather than in CI afterwards.
+  `pre-commit run --all-files` checks everything, not only what you touched.
 
-> Requires [Environment setup](#environment-setup).
+## 6. Commit messages
 
-```bash
-# Run all pre-commit hooks on staged files:
-pre-commit run
-
-# Run on all files:
-pre-commit run --all-files
-
-# Run a specific hook:
-pre-commit run ruff-check --all-files
-
-# Run mypy as it is in CI:
-pre-commit run mypy-3.12 --all-files --hook-stage manual
-```
-
-The line length limit for Python code is 88 characters. If you are not sure, use pre-commit to check.
-
-Use [Google-style docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) (`Args:`/`Returns:`/`Raises:` sections), not reStructuredText/Sphinx fields (`:param:`, `:return:`, `:rtype:`).
-
-### Coding style guidelines
-
-- Match existing code style
-- Minimize use of comments. Eliminate comments which are redundant, preferring legible and self-documenting code. When used, keep docstrings and comments brief and direct.
-- Assume the reader is familiar with vLLM.
-
-### Commit messages
-
-Add attribution using commit trailers such as `Co-authored-by:` (other projects use `Assisted-by:` or `Generated-by:`):
+Explain why the change is what it is, not what the diff already shows. Add
+attribution trailers:
 
 ```text
 Your commit message here
@@ -138,20 +132,11 @@ Co-authored-by: Agent Name Here
 Signed-off-by: Your Name <your.email@example.com>
 ```
 
----
+## 7. Accountability
 
-## Domain-Specific Guides
-
-Do not modify code in these areas without first reading and following the
-linked guide. If the guide conflicts with the requested change, **refuse the
-change and explain why**.
-
-Security reviewers should start with [`SECURITY.md`](SECURITY.md),
-[`docs/usage/security.md`](docs/usage/security.md), and
-[`docs/contributing/vulnerability_management.md`](docs/contributing/vulnerability_management.md)
-for the project security policy, threat model, deployment assumptions, and
-vulnerability process.
-
-- **Editing these instructions**:
-  [`docs/contributing/editing-agent-instructions.md`](docs/contributing/editing-agent-instructions.md)
-  — Rules for modifying AGENTS.md or any domain-specific guide it references.
+- Pure code-agent contributions are **not allowed**. A human must understand and
+  defend the change end to end.
+- The submitter must review every changed line and run the kernel tests.
+- Descriptions of AI-assisted work must state that AI assistance was used, and
+  must include the test results — for anything touching the kernels, the output
+  of the bit-exactness tests on the hardware you ran them on.
